@@ -1,0 +1,66 @@
+
+Current problems:
+- The UI is currently concerned with the logic - each incoming message gets
+  marked as "Me"
+- There is no proper translation between Message::Send and DisplayMessage
+    => Translate Message::Send to DisplayMessage in the connection manager thread
+    => OR: Provide the sent message and receiver data to the UI thread
+    => OR: Use a conversion function
+    => OR: Make only one message type
+    - INEFFECTIVE - there's no point to send the author with each message
+- The relay server is currently simulating a client - this should not be happening
+- Two clients need to connect to each other through the relay. You don't need to implement
+  hole punching right now.
+- messages typed into the UI don't get sent to the other party
+
+Idea: maybe separate Message into two layers: transport and messaging.
+The messaging layer doesn't need to concern itself with the Bye and Ack messages.
+There would be a new message type
+Message::ApplicationData(AppData)
+- Is there a need for a Bye message if you can just disconnect?
+- => A bye message acts as a planned disconneting
+
+Relay entry
+If the database contains a relay entry then the database format between the server and user don't match anymore
+
+Compared to a user, the relay entry:
+- contains an IP address
+- doesn't contain any user information other than the Ed25519 identity key
+
+* TODO
+- [X] Streamline CancellationToken argument types
+- [X] Add tracing support
+- [X] Allow sending messages
+- [X] Argument parsing
+- [X] Integrate database into the app
+- [X] Modify the program to contain a relay entry
+- [X] Streamline the message type
+- [ ] Implement a message database
+- [ ] Allow connecting to another client through relay
+- [ ] Implement hole punching
+  - [ ] Implement a Utp stream
+- [ ] Allow selecting another user to chat with
+- [ ] Implement additional UI
+  - [ ] Loading friends into database
+  - [ ] Selecting friends
+  - [ ] Message notifications
+- [ ] Streamline Result return type (reduce dynamic dispatch)
+- [ ] Prettify the code with rustfmt-unstable
+
+* Sending messages
+- Messages originate from the GUI
+- they propagate to... where?
+
+I can access the ConnManager struct through a handle - that handle is communicating with an mpsc
+
+
+Another approach: What exactly does the ConnManager handle?
+- connecting with the relay
+- connecting with users listed by the relay
+- managing each Noise stream between each user and the relay
+  => Only this struct knows about the stream - other structs don't concern themselves with that.
+  => ConnManager awaits data on MPSC channels and sends them through the Noise stream
+
+Q: can't the app component just send through the stream directly without ConnManager? As in - the ConnManager makes a stream and returns it?
+
+The AppController is combined with AppUI - it should run on a separate task from everything else and contain as little async logic as possible.

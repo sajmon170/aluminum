@@ -1,0 +1,199 @@
+* TODO
+- [ ] Traffic encryption
+- [ ] User identification (nicknames + passwords or keys)
+- [ ] Save user and session data on disk (Tokio async IO)
+
+* Messages sent through the server
+** Possible attacks
+BEWARE! The initial plan didn't consider any of the following attacks:
+- replay attack
+- key leak
+- MITM
+  - VERY dangerous! If an attacker comes between Alice and the server he can connect her to someone else!
+- Bob impersonating Alice
+
+** Server hardening
+- Encrypting the traffic
+- The server public key should be distributed with the app
+- The keys should update with the app.
+  When the key expired the user doesn't see a "key expired" error but a "This app is outdated. Please update your app to connect to the server".
+
+** Entities
+- A: User
+- B: User
+- U: Generic user (either A or B)
+- R: Relay server
+  
+** Phase 0 - Setup
+U -> R: "I want to join!"
+R -> U: "Ok" or "I can't handle that"
+
+** Phase 1 - Notifying
+A -> R: "I want to call B"
+R -> B: "A wants to call you. Do you accept?"
+B -> R: "Yes, I do" or "No I don't"
+R -> A: "B accepted" or "B refused"
+
+** Phase 2 - Hole punching
+R -> A, B: "Connect to me through UDP"
+R -> A: "B's UDP data is (B.addr, B.port)"
+R -> B: "A's UDP data is (A.addr, A.port)"
+A -> B: "Hole punching"
+B -> A: "Hole punching"
+Now A and B can transmit data to each other
+
+
+* Maintaining a connection over UDP
+- idempotent messages
+- Each message has to get acknowledged
+- Message not acknowledge after a second passed
+  -> message gets resent
+- Message not acknowledged three times in a row
+  -> sender gets notified that the message could not be sent. He can try to send it again.
+
+Fine-tuning:
+- since messages are idempotent maybe two at once should be sent for redundancy?
+- maybe the message should get acknowledged after half a second
+
+* Abstraction layers
+- SCOUT - Simple Connection Over UDP Transmission
+  This layer "scouts" whether messages were actually sent
+  It provides methods analogous to those found in TcpSocket/TcpStream modules.
+
+- Simple P2P - provides hole punching and uses SCOUT for maintaining a connection
+Proposed usage:
+#+BEGIN_SRC rust
+use sp2p::{RelayStream, ScoutListener, ScoutStream};
+
+#[tokio::main]
+async fn main() {
+    // Version 1: We only care about maintaining UDP connections
+    let listener: ScoutListener = sp2p::listener::bind("183.12.76.11:1234").await.unwrap();
+    //                                                  ^ relay server
+    //  ^ ports automatically managed by the listener
+
+    // Version 2: We also want to communicate with the relay server
+    let relay: RelayStream = sp2p::relay::connect("183.12.76.11:1234").await.unwrap();
+    let listener: ScoutListener = relay.bind("127.0.0.1:50009").await.unwrap();
+    //                                                  ^ A single UDP port is used
+    //                                                    for processing multiple streams
+    // ^ A MASSIVE PROBLEM: I don't know my UDP port!
+
+    loop {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        tokio::spawn(process(stream));
+    }
+}
+
+fn process(stream: ScoutStream) {
+    ...
+}
+#+END_SRC
+
+#+BEGIN_SRC rust
+#[tokio::main]
+async fn main() {
+    let relay: RelayStream = sp2p::relay::connect(Server::Address).await.unwrap();
+    let listener: ScoutListener = relay().await.unwrap();
+
+    // task 1:
+    // - handles incoming connections
+    // - spawns separate tasks for each connection
+    //   - spawned tasks can share resources in case of a group chat
+    //     they can send idempotent messages to one sink.
+
+    // task 2:
+    // handles outgoing connections
+
+    // task 3:
+    // handles user input/user interface
+}
+#+END_SRC
+Scout and SP2P shouldn't be dependent on any async runtime in particular
+
+* Identifying users
+- Users are often behind a NAT - they have dynamic IP addresses
+- We don't want to store any sensitive passwords on the server
+  => use Public Key Infrastructure
+- Each user generates their public-private key pair
+- They share user data (username) encrypted using the public key
+
+* SCOUT
+** Problems
+- packets sent in random order
+- lost packets
+- there are so many packets that their IDs will eventually overflow
+- ...but an ID field that's too large will introduce a massive overhead
+
+** Ideas
+- Send UDP datagrams in batches
+- Or don't care about a big ID field - we have a lot of bandwidth
+- The ID isn't actually that big - 32 bit should suffice if we send 0.5 kB datagrams.
+
+* UDP connection
+- TCP should be the only connection that's consistently held
+- UDP addresses should be exchanged only where necessary (NOT periodically) to avoid straining the server
+- The user signals to the server they need to connect with someone
+- ...but they don't know the other user's IP => we need a unique key!
+
+* Unique keys
+Issue: how do you block using someone else's key as your own?
+- easy: registering on the server
+- hard: how do you decentralize this?
+
+Idea: keys don't correspond to the identity of someone but to the connection between two people. Keys are created privately.
+
+* Identification
+Use the same approach as in SSH challenge
+- Server challenges A before giving it access to its hole punching service
+- B challenges A to verify the authenticity of both A and the server
+- A also challenges B - two-way challenge
+
+* Handling messages
+Messages should be digitally signed, since they can be persisted inside fragments and shared with others.
+
+* Group chats
+Suppose A, B, C and D participate in a group chat
+
+** Case 1: A and B are online, C and D are offline
+A and B can send each other messages and send the history to C and D when they're available
+
+** Case 2: A and B are online, C and D are online
+There is no way for A, B to not see C, D and vice-versa (really?) - the signalling server notifies everyone of each other's presence.
+
+** Case 3: A and B, C and D are online at separate points in time
+They will resend the messages to each other when available. The continuity of messages will not be changed after merging, since A, B and C, D are active at different points.
+
+* Making keys time-based
+- The users can provide the "seed" (that is - the initial exchange of their public keys)
+- The users' terminals will periodically exchange new public keys when both are available online (the users don't have to talk to each other by themselves)
+- Session keys should be unique to each conversation
+  - when should they be dropped exactly if the devices are constantly online?
+  - maybe they should be dropped just like public keys - after some established time...
+  - or maybe the terminal drops a key if there was no explicit communication between users for some period of time
+
+* State-of-the-art
+- EdDSA (ed25519) for signatures
+  History:
+  Elgamal -> DSA -> ECDSA -> EdDSA
+
+  Can be used with PGP, recommended by OpenSSH
+
+* Final networking stack
+- Tokio async runtime
+- TCP for client-server communication
+- UTP for p2p communication
+- Noise security with:
+  - x25519 curves
+  - chacha20 symmetric encryption
+  - blake2b hash (we assume most devices are 64-bit)
+  - fundamental patterns:
+    - +XK+ IK for client-server communication
+    - KK for p2p communication
+
+All further messages will be done on top.
+
+* Rust packages
+- tokio
+- tokio-utp
+- snow

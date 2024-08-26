@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+	"p2p-chat",
+	"p2p-relay",
+	"libchatty"
+]

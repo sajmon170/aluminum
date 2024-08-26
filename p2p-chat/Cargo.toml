@@ -1,0 +1,28 @@
+[package]
+name = "aluminum"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
+bytes = "1"
+tokio-utp = "0.3.0"
+snow = "0.9.6"
+#base64 = "0.22.1"
+futures = "0.3"
+libchatty = { path = "../libchatty" }
+ratatui = "0.28.0"
+tui-textarea = "0.6.1"
+crossterm = { version = "0.28.1", features = ["event-stream"] }
+chrono = "0.4.38"
+textwrap = "0.16.1"
+#async-stream = "0.3.5"
+tokio-stream = "0.1.15"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-appender = "0.2.3"
+color-eyre = "0.6.3"
+clap = { version = "4.5.16", features = ["derive", "string"] }
+dirs = "5.0.1"
+toml = "0.8.19"

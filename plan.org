@@ -1,0 +1,21 @@
+#+TITLE: Programming plan
+
+* App name
+Tin-Can (from a tin-can telephone)
+Logo: Two tin cans connected through a wire that says "Tin-Can"
+
+* TODO
+1. [-] Hole punching
+   - [X] Connecting to a server
+     - [X] TCP data transfer
+     - [X] Noise IK handshake
+       - [X] Implement a send/receive loop
+       - [X] Detect when the handshake ends, go into a 
+   - [ ] Reading connection data (IP address and port)
+   - [ ] Storing connection data in a database
+   - [ ] Forwarding connection data between peers
+     
+2. [ ] Sending messages
+   - [ ] Establishing connection between peers
+     - [ ] UTP data transfer
+     - [ ] Noise KK handshake

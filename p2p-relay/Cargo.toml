@@ -1,0 +1,15 @@
+[package]
+name = "p2p-relay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+bytes = "1"
+tokio-utp = "0.3.0"
+base64 = "0.22.1"
+libchatty = { path = "../libchatty" }
+futures = "0.3"
+dirs = "5.0.1"
+clap = { version = "4.5.16", features = ["derive"] }

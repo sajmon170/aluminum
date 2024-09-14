@@ -1,0 +1,4 @@
+[2m2024-09-14T19:36:20.862992Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Configuring self
+[2m2024-09-14T19:36:20.863751Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Starting connection
+[2m2024-09-14T19:36:20.863779Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m No cached session for DnsName("localhost")    
+[2m2024-09-14T19:36:20.863836Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m Not resuming any session    

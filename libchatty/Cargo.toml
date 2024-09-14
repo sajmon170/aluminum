@@ -19,3 +19,8 @@ dirs = "5"
 sha2 = "0.10"
 base64 = "0.22.1"
 toml = "0.8.19"
+
+quinn = "0.11.3"
+rustls = { version = "0.23.12", features = ["ring"] }
+rcgen = "0.13.1"
+tracing = "0.1.40"

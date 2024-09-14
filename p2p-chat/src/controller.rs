@@ -144,9 +144,21 @@ impl<'a> AppController<'a> {
             Action::ReceiveMsg(msg) => self.ui.write_msg(msg.clone()),
             Action::SendMsg(msg) => {
                 self.ui.write_msg(msg.clone());
+                /*
                 self.conn_manager
                     .tx
                     .send(ConnInstruction::Send(msg))
+                    .await
+                    .unwrap();
+*/
+                let id = {
+                    let db = self.db.lock().unwrap();
+                    db.myself.get_public_key()
+                };
+
+                self.conn_manager
+                    .tx
+                    .send(ConnInstruction::GetUser(id))
                     .await
                     .unwrap();
             }

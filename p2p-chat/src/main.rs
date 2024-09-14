@@ -1,5 +1,4 @@
 #![allow(unused)]
-//use tokio_utp::{UtpListener, UtpStream};
 
 mod connmanager;
 mod message;
@@ -19,12 +18,17 @@ use std::fs::File;
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let _guard = init_tracing()?;
-    
+    // TODO - find out what dependency forces this line to be necessary
+    rustls::crypto::ring::default_provider().install_default();
+
     AppSpawner::run().await?;
 
     Ok(())
 }
 
+// TODO - move this to a common library
+// - maybe to libchatty
+// - or to another workspace dedicated to generic tooling
 fn init_tracing() -> Result<WorkerGuard> {
     let file = File::create("tracing.log")?;
     let (non_blocking, guard) = non_blocking(file);

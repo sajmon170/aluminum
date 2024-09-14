@@ -1,0 +1,7 @@
+[2m2024-09-14T19:19:27.624829Z[0m [34mDEBUG[0m [2mrustls::server::hs[0m[2m:[0m decided upon suite TLS13_AES_256_GCM_SHA384    
+[2m2024-09-14T19:19:27.625997Z[0m [32m INFO[0m [2mp2p_relay[0m[2m:[0m Opened a new connection from 127.0.0.1:48224
+[2m2024-09-14T19:19:27.626535Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Beginning a handshake
+[2m2024-09-14T19:19:27.626593Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Trying to receive a handshake message
+[2m2024-09-14T19:19:27.626597Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Received handshake message
+[2m2024-09-14T19:19:27.626777Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Trying to send a handshake message
+[2m2024-09-14T19:19:27.627020Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Sent handshake message

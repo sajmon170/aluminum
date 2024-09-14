@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    io::{self, stdout, Stdout},
+    io::{self, stdout, Stdout, Write},
     panic::{set_hook, take_hook},
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -52,6 +52,7 @@ fn init_panic_hook() {
     }));
 }
 
+// TODO: change UserDb::load() to UserDb::import()
 /// A peer-to-peer messenger based on out-of-band user identity exchange
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -59,9 +60,9 @@ struct Args {
     /// Loads a given database of user identities
     #[arg(long, value_name = "PATH", default_value = get_default_path())]
     db: PathBuf,
-    /// Loads another user's identity file
+    /// Imports another user's identity file
     #[arg(long, value_name = "PATH")]
-    load: Option<PathBuf>,
+    import: Option<PathBuf>,
     /// Exports your identity to a file
     #[arg(long, value_name = "PATH")]
     export: Option<PathBuf>
@@ -86,6 +87,28 @@ pub struct AppSpawner {
     pub tracker: TaskTracker,
 }
 
+// TODO - replace this with proper UI
+fn make_user() -> io::Result<Myself> {
+    //stdout().write("Name; ");
+    println!("Name:");
+    let mut name = String::new();
+    io::stdin().read_line(&mut name)?;
+
+    println!("Surname:");
+    let mut surname = String::new();
+    io::stdin().read_line(&mut surname)?;
+
+    println!("Nickname:");
+    let mut nickname = String::new();
+    io::stdin().read_line(&mut nickname)?;
+
+    println!("Description:");
+    let mut description = String::new();
+    io::stdin().read_line(&mut description)?;
+
+    Ok(Myself::new(&name, &surname, &nickname, &description))
+}
+
 impl AppSpawner {
     // TODO: Fix the bug where the app panics if ~/.local/share/aluminum doesn't exist
     // TODO: separate database handling into another function
@@ -98,18 +121,10 @@ impl AppSpawner {
         let mut db = if args.db.exists() {
             UserDb::load(&args.db)
         } else {
-            UserDb::new(
-                args.db,
-                Myself::new(
-                    "Szymon",
-                    "Zadworny",
-                    "sajmon",
-                    "kurwa nie zdam xd",
-                ),
-            )
+            UserDb::new(args.db, make_user()?)
         };
 
-        if let Some(path) = args.load {
+        if let Some(path) = args.import {
             let user = User::load_file(&path);
             db.add_user(user);
         }

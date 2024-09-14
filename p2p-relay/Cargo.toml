@@ -13,3 +13,11 @@ libchatty = { path = "../libchatty" }
 futures = "0.3"
 dirs = "5.0.1"
 clap = { version = "4.5.16", features = ["derive"] }
+
+quinn = "0.11.3"
+rustls = { version = "0.23.12", features = ["ring"] }
+rcgen = "0.13.1"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-appender = "0.2.3"
+color-eyre = "0.6.3"

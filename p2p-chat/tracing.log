@@ -1,4 +1,18 @@
-[2m2024-09-14T19:36:20.862992Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Configuring self
-[2m2024-09-14T19:36:20.863751Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Starting connection
-[2m2024-09-14T19:36:20.863779Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m No cached session for DnsName("localhost")    
-[2m2024-09-14T19:36:20.863836Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m Not resuming any session    
+[2m2024-09-17T19:03:01.438213Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Configuring self
+[2m2024-09-17T19:03:01.438920Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Starting connection
+[2m2024-09-17T19:03:01.438973Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m No cached session for DnsName("localhost")    
+[2m2024-09-17T19:03:01.439115Z[0m [34mDEBUG[0m [2mrustls::client::hs[0m[2m:[0m Not resuming any session    
+[2m2024-09-17T19:03:01.439947Z[0m [34mDEBUG[0m [1mdrive[0m[1m{[0m[3mid[0m[2m=[0m0[1m}[0m[2m:[0m [2mrustls::client::hs[0m[2m:[0m Using ciphersuite TLS13_AES_256_GCM_SHA384    
+[2m2024-09-17T19:03:01.439957Z[0m [34mDEBUG[0m [1mdrive[0m[1m{[0m[3mid[0m[2m=[0m0[1m}[0m[2m:[0m [2mrustls::client::tls13[0m[2m:[0m Not resuming    
+[2m2024-09-17T19:03:01.440066Z[0m [34mDEBUG[0m [1mdrive[0m[1m{[0m[3mid[0m[2m=[0m0[1m}[0m[2m:[0m [2mrustls::client::tls13[0m[2m:[0m TLS1.3 encrypted extensions: [ServerNameAck, TransportParameters([1, 4, 128, 0, 117, 48, 3, 2, 69, 192, 4, 8, 255, 255, 255, 255, 255, 255, 255, 255, 5, 4, 128, 19, 18, 208, 6, 4, 128, 19, 18, 208, 7, 4, 128, 19, 18, 208, 8, 2, 64, 100, 14, 1, 5, 64, 182, 0, 2, 16, 190, 170, 117, 172, 137, 211, 164, 11, 226, 207, 33, 204, 59, 66, 15, 76, 32, 4, 128, 0, 255, 255, 0, 20, 204, 76, 83, 242, 169, 131, 210, 167, 243, 137, 179, 189, 199, 164, 41, 16, 65, 10, 24, 112, 15, 8, 181, 92, 166, 200, 8, 91, 160, 74, 106, 178, 0, 192, 0, 0, 0, 255, 4, 222, 26, 2, 67, 232])]    
+[2m2024-09-17T19:03:01.440088Z[0m [34mDEBUG[0m [1mdrive[0m[1m{[0m[3mid[0m[2m=[0m0[1m}[0m[2m:[0m [2mrustls::client::hs[0m[2m:[0m ALPN protocol is None    
+[2m2024-09-17T19:03:01.440367Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Opened connection
+[2m2024-09-17T19:03:01.440372Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Converted to a stream
+[2m2024-09-17T19:03:01.440413Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Building as initiator
+[2m2024-09-17T19:03:01.440486Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Beginning a handshake
+[2m2024-09-17T19:03:01.440530Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Trying to send a handshake message
+[2m2024-09-17T19:03:01.440967Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Sent handshake message
+[2m2024-09-17T19:03:01.440993Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Trying to receive a handshake message
+[2m2024-09-17T19:03:01.441687Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Received handshake message
+[2m2024-09-17T19:03:01.441920Z[0m [32m INFO[0m [2mlibchatty::noise_session[0m[2m:[0m Finished the Noise handshake
+[2m2024-09-17T19:03:01.441955Z[0m [32m INFO[0m [2maluminum::connmanager[0m[2m:[0m Upgraded the connection

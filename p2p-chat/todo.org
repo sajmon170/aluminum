@@ -37,15 +37,23 @@ Compared to a user, the relay entry:
 - [X] Streamline the message type
 - [ ] Implement a message database
 - [ ] Allow connecting to another client through relay
+- [X] Separate ingress and egress message codecs 
+- [X] Implement QUIC
 - [ ] Implement hole punching
-  - [ ] Implement a Utp stream
 - [ ] Allow selecting another user to chat with
-- [ ] Implement additional UI
+- [-] Implement additional UI
+  - [X] Allow creating multiple views
+  - [ ] Tab selection
   - [ ] Loading friends into database
   - [ ] Selecting friends
   - [ ] Message notifications
+- [ ] Implement RPCs with Tower Services
 - [ ] Streamline Result return type (reduce dynamic dispatch)
 - [ ] Prettify the code with rustfmt-unstable
+- [ ] Streamline the Action type (everything should return AppAction (but won't this lead to circular dependencies?))
+  - [ ] implement ~.into()~ for each enum variant
+
+Good luck, keep yourself hydrated with monster energy...
 
 * Sending messages
 - Messages originate from the GUI
@@ -64,3 +72,7 @@ Another approach: What exactly does the ConnManager handle?
 Q: can't the app component just send through the stream directly without ConnManager? As in - the ConnManager makes a stream and returns it?
 
 The AppController is combined with AppUI - it should run on a separate task from everything else and contain as little async logic as possible.
+
+* Design notes
+- It's hard to pass the terminal between threads
+- EventHandler is necessary for accumulating the events into a stream of a singular Event type that can then be handled in a uniform way/unit tested

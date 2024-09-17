@@ -3,9 +3,12 @@
 mod connmanager;
 mod message;
 mod eventmanager;
-mod ui;
 mod controller;
 mod spawner;
+mod tui;
+mod component;
+mod messageview;
+mod friendsview;
 
 use crate::spawner::AppSpawner;
 use color_eyre::eyre::Result;
@@ -18,7 +21,7 @@ use std::fs::File;
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let _guard = init_tracing()?;
-    // TODO - find out what dependency forces this line to be necessary
+    // TODO - find out which dependency makes this line necessary
     rustls::crypto::ring::default_provider().install_default();
 
     AppSpawner::run().await?;

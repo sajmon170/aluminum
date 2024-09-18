@@ -18,7 +18,7 @@ The messaging layer doesn't need to concern itself with the Bye and Ack messages
 There would be a new message type
 Message::ApplicationData(AppData)
 - Is there a need for a Bye message if you can just disconnect?
-- => A bye message acts as a planned disconneting
+- => A bye message acts as a planned disconnect
 
 Relay entry
 If the database contains a relay entry then the database format between the server and user don't match anymore
@@ -35,15 +35,15 @@ Compared to a user, the relay entry:
 - [X] Integrate database into the app
 - [X] Modify the program to contain a relay entry
 - [X] Streamline the message type
-- [ ] Implement a message database
-- [ ] Allow connecting to another client through relay
+- [X] Implement a message database
+- [X] Allow connecting to another client through relay
 - [X] Separate ingress and egress message codecs 
 - [X] Implement QUIC
 - [ ] Implement hole punching
-- [ ] Allow selecting another user to chat with
+- [X] Allow selecting another user to chat with
 - [-] Implement additional UI
   - [X] Allow creating multiple views
-  - [ ] Tab selection
+  - [X] Tab selection
   - [ ] Loading friends into database
   - [ ] Selecting friends
   - [ ] Message notifications

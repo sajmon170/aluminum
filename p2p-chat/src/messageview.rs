@@ -4,6 +4,7 @@ use std::{
 
 use chrono::Utc;
 
+use libchatty::messaging::{PeerMessageData, UserMessage};
 use ratatui::{
     prelude::*,
     backend::CrosstermBackend,
@@ -91,14 +92,8 @@ impl<'a> MessageView<'a> {
         lines.into()
     }
 
-    // TODO: Implement proper message formatting!
-    // Not every message is from me!
-    pub fn write_msg(&mut self, msg: String) {
-        self.messages.push(DisplayMessage {
-            content: msg,
-            author: String::from("Me"),
-            timestamp: Utc::now()
-        }.to_string());
+    pub fn append(&mut self, msg: DisplayMessage) {
+        self.messages.push(msg.to_string());
     }
 
     pub fn scroll_down(&mut self) {
@@ -132,7 +127,7 @@ impl<'a> MessageView<'a> {
 pub enum MessageViewAction {
     ScrollUp,
     ScrollDown,
-    ReceiveMsg(String),
+    //ReceiveMsg(String),
     SendMsg(String),
     WriteKey(PressedKey),
 }
@@ -162,7 +157,8 @@ impl<'a> Component for MessageView<'a> {
             Self::Action::ScrollUp => self.scroll_up(),
             Self::Action::ScrollDown => self.scroll_down(),
             Self::Action::WriteKey(key) => self.write_key(key),
-            Self::Action::ReceiveMsg(msg) => self.write_msg(msg.clone()),
+            //Self::Action::ReceiveMsg(msg) => self.write_msg(msg.clone()),
+            //Self::Action::SendMsg => { }
             _ => { }
             // TODO - implement sending messages
             /*

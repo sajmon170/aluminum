@@ -83,6 +83,7 @@ checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 name = "aluminum"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bytes 1.6.0",
  "chrono",
  "clap",
@@ -90,6 +91,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "ed25519-dalek",
+ "enum_dispatch",
  "futures 0.3.30",
  "libchatty",
  "quinn",
@@ -97,6 +99,8 @@ dependencies = [
  "rcgen",
  "rustls",
  "snow",
+ "strum",
+ "strum_macros",
  "textwrap",
  "tokio 1.37.0",
  "tokio-stream",
@@ -409,6 +413,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-targets 0.52.5",
 ]
@@ -823,6 +828,18 @@ name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+
+[[package]]
+name = "enum_dispatch"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa18ce2bc66555b3218614519ac839ddb759a7d6720732f979ef8d13be147ecd"
+dependencies = [
+ "once_cell",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "equivalent"
@@ -1264,6 +1281,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bytes 1.6.0",
+ "chrono",
  "curve25519-dalek",
  "dirs",
  "ed25519-dalek",
@@ -1598,6 +1616,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "dirs",
+ "ed25519-dalek",
  "futures 0.3.30",
  "libchatty",
  "quinn",

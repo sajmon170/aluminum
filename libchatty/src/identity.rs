@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
     net::SocketAddr
 };
+use crate::messaging::UserMessage;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMetadata {
@@ -79,36 +80,6 @@ impl Myself {
     }
     // TODO: Implement updating your identity
 
-    /*
-    // TODO: Move this to Ratatui
-    fn create_identity() -> Self {
-        println!("Creating a new identity...");
-
-        println!("Name: ");
-        let mut name = String::new();
-        io::stdin().read_line(&mut name).unwrap();
-        let name = name.trim();
-
-        println!("Surname: ");
-        let mut surname = String::new();
-        io::stdin().read_line(&mut surname).unwrap();
-        let surname = surname.trim();
-
-        println!("Nickname: ");
-        let mut nickname = String::new();
-        io::stdin().read_line(&mut nickname).unwrap();
-        let nickname = nickname.trim();
-
-        println!("Description: ");
-        let mut description = String::new();
-        io::stdin().read_line(&mut description).unwrap();
-        let description = description.trim();
-
-        println!("Done!\n");
-        Myself::new(name, surname, nickname, description)
-        }
-        */
-
     pub fn share(&self) -> User {
         User {
             metadata: self.metadata.clone(),
@@ -126,6 +97,7 @@ pub struct UserDb {
     path: PathBuf,
     pub myself: Myself, // TODO: Make this a list of multiple identities
     pub remote: HashMap<VerifyingKey, UserMetadata>,
+    pub messages: HashMap<VerifyingKey, Vec<UserMessage>>
 }
 
 // TODO: Make this safe - implement error handling!
@@ -137,6 +109,7 @@ impl UserDb {
             path,
             myself,
             remote: HashMap::new(),
+            messages: HashMap::new()
         }
     }
 
@@ -149,7 +122,6 @@ impl UserDb {
         fs::write(&self.path, serialized).unwrap();
     }
 
-    // - change the argument to a file path
     pub fn load(path: &Path) -> Self {
         let serialized = fs::read(path).unwrap();
         postcard::from_bytes(&serialized).unwrap()

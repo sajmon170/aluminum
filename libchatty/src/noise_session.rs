@@ -23,6 +23,7 @@ pub enum NoiseSelfType {
     K,
 }
 
+// TODO - rewrite this using the strum macros
 impl Display for NoiseSelfType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {

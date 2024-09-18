@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use ed25519_dalek::VerifyingKey;
 use tokio::{
     sync::mpsc,
     time::{self, Duration}
@@ -22,9 +23,10 @@ use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle},
     eventmanager::{AppEvent, EventManagerHandle, PressedKey},
     tui::Tui,
+    messageview::MessageViewAction
 };
 
-use libchatty::identity::{Myself, User, UserDb, Relay};
+use libchatty::{identity::{Myself, Relay, User, UserDb}, messaging::{PeerMessageData, UserMessage}};
 
 use tracing::{event, Level};
 
@@ -37,7 +39,9 @@ use crate::tui::TuiAction;
 pub enum AppAction {
     Quit,
     Redraw,
-    TuiAction(TuiAction)
+    TuiAction(TuiAction),
+    ReceiveMessage(UserMessage),
+    SendMessage(PeerMessageData, VerifyingKey)
 }
 
 pub struct AppController<'a> {
@@ -71,9 +75,9 @@ impl<'a> AppController<'a> {
         }
         
         let conn_manager = ConnManagerHandle::new(
+            message_tx,
             identity,
             relay,
-            message_tx,
             &tracker,
             token.clone(),
         );
@@ -109,9 +113,40 @@ impl<'a> AppController<'a> {
         match event {
             AppEvent::FrameTick => Some(AppAction::Redraw),
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
-            //AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMsg(msg)),
+            AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMessage(msg)),
             _ => None,
         }
+    }
+
+    fn receive_message(&mut self, msg: UserMessage) {
+        self.tui.add_message(msg.author, &msg);
+        self.add_message(msg.author, msg);
+    }
+
+    fn add_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
+        let mut db = self.db.lock().unwrap();
+        let mut log = db.messages.entry(user_log).or_insert(Vec::new());
+        log.push(msg);
+    }
+
+    async fn send_message(&mut self, msg: PeerMessageData, to: VerifyingKey) -> io::Result<()> {
+        let identity = {
+            let mut db = self.db.lock().unwrap();
+            db.myself.clone()
+        };
+
+        let user_msg = UserMessage::new(identity.get_public_key(), msg.clone());
+
+        self.tui.add_message(to, &user_msg);        
+        self.add_message(to, user_msg);
+
+        self.conn_manager
+            .tx
+            .send(ConnInstruction::Send(to, msg))
+            .await
+            .unwrap();
+
+        Ok(())
     }
 
     async fn execute(&mut self, action: AppAction) -> io::Result<()> {
@@ -124,34 +159,20 @@ impl<'a> AppController<'a> {
                 self.tui.draw(self.terminal)?;
             }
             AppAction::TuiAction(action) => {
-                self.tui.react(action)?;
-            }
-            /*
-            Action::Redraw => self.ui.draw(&mut self.terminal)?,
-            Action::ScrollUp => self.ui.scroll_up(),
-            Action::ScrollDown => self.ui.scroll_down(),
-            Action::WriteKey(key) => self.ui.write_key(key),
-            Action::ReceiveMsg(msg) => self.ui.write_msg(msg.clone()),
-            Action::SendMsg(msg) => {
-                self.ui.write_msg(msg.clone());
-                /*
-                self.conn_manager
-                    .tx
-                    .send(ConnInstruction::Send(msg))
-                    .await
-                    .unwrap();
-*/
-                let id = {
-                    let db = self.db.lock().unwrap();
-                    db.myself.get_public_key()
+                match action {
+                    TuiAction::MessageViewAction(MessageViewAction::SendMsg(msg)) => {
+                        let data = PeerMessageData::Text(msg);
+                        self.execute(AppAction::SendMessage(data, self.tui.get_current_user()));
+                    }
+                    _ => self.tui.react(action)?
                 };
-
-                self.conn_manager
-                    .tx
-                    .send(ConnInstruction::GetUser(id))
-                    .await
-                    .unwrap();
-*/
+            }
+            AppAction::ReceiveMessage(msg) => {
+                self.receive_message(msg);
+            }
+            AppAction::SendMessage(msg_data, pubkey) => {
+                self.send_message(msg_data, pubkey);
+            }
         };
 
         Ok(())

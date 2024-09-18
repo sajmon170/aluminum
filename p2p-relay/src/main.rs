@@ -11,9 +11,9 @@ use libchatty::{
 
 use std::{
     error::Error,
+    net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex},
-    net::SocketAddr
 };
 
 use clap::Parser;
@@ -24,13 +24,15 @@ use quinn::{ClientConfig, Endpoint, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
 // TODO - move this into a sseparate library
-use tracing::{debug, info, instrument, trace, event, Level};
+use tracing::{debug, event, info, instrument, trace, Level};
 use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
 use tracing_subscriber::filter::EnvFilter;
 
 // TODO - move this into a sseparate library
 use color_eyre::eyre::Result;
 
+use ed25519_dalek::VerifyingKey;
+use std::collections::HashMap;
 use std::fs::File;
 
 // TODO: allow exporting your identity as Relay
@@ -40,6 +42,11 @@ use std::fs::File;
 // => Add a get public key flag
 
 // TODO - fix connmanager (currently it uses db instead of the Relay struct)
+
+use tokio::io::{AsyncRead, AsyncWrite, Join};
+
+use quinn::{Connection, RecvStream, SendStream};
+
 pub fn make_server_endpoint(
     bind_addr: SocketAddr,
 ) -> Result<
@@ -51,39 +58,57 @@ pub fn make_server_endpoint(
     Ok((endpoint, server_cert))
 }
 
-async fn process<T: Unpin + tokio::io::AsyncRead + tokio::io::AsyncWrite>(
-    stream: T,
+type ConnectionDb = HashMap<VerifyingKey, SocketAddr>;
+
+async fn process(
+    conn: Connection,
     db: Arc<Mutex<UserDb>>,
+    conn_db: Arc<Mutex<ConnectionDb>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let addr = conn.remote_address();
+
+    let (writer, reader) = conn.accept_bi().await.unwrap();
+    let stream = tokio::io::join(reader, writer);
+
     let keys = {
         let mut lock = db.lock().unwrap();
         let key = lock.get_master_key();
         utils::ed25519_to_noise(key)
     };
 
-    let mut stream =
-        NoiseTransportBuilder::<T, RelayRequest, RelayResponse>::new(
-            keys, stream,
-        )
-        .set_my_type(NoiseSelfType::K)
-        .set_peer_type(NoisePeerType::I)
-        .build_as_responder()
-            .await.expect("Handshake error");
+    let mut stream = NoiseTransportBuilder::<
+        Join<RecvStream, SendStream>,
+        RelayRequest,
+        RelayResponse,
+    >::new(keys, stream)
+    .set_my_type(NoiseSelfType::K)
+    .set_peer_type(NoisePeerType::I)
+    .build_as_responder()
+    .await
+    .expect("Handshake error");
 
     let (mut tx, mut rx) = stream.split();
 
-    let mut timeout =
-        tokio::time::interval(tokio::time::Duration::from_secs(2));
-
     while let Some(Ok(msg)) = rx.next().await {
         match msg {
-            RelayRequest::GetUser(pubkey) => {
-                tx.send(RelayResponse::UserAddress(
-                    "127.0.0.1:8000".parse().unwrap(),
-                ))
-                .await;
+            RelayRequest::Register(pubkey) => {
+                let _guard = {
+                    let mut db = conn_db.lock().unwrap();
+                    db.insert(pubkey, addr);
+                };
+
+                tx.send(RelayResponse::Ack).await;
             }
-            RelayRequest::Bye => break,
+            RelayRequest::GetUser(pubkey) => {
+                let result = {
+                    let db = conn_db.lock().unwrap();
+                    db.get(&pubkey).and_then(|addr| Some(addr.clone()))
+                };
+
+                tx.send(RelayResponse::UserAddress(result)).await;
+            }
+            RelayRequest::Ack => { }
+            RelayRequest::Bye => break
         }
     }
 
@@ -150,7 +175,7 @@ struct Args {
 async fn main() -> Result<(), Box<dyn Error>> {
     color_eyre::install()?;
     let _guard = init_tracing()?;
-    
+
     let path = get_default_path();
     let serverdb = if path.exists() {
         UserDb::load(&path)
@@ -161,10 +186,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "Serwer",
                 "Serwerowsky",
                 "server",
-                "serwuje więcej użytkowników niż twoja stara",
+                "serwuje użytkowników z tradycją od 2024 roku",
             ),
         )
     };
+
+    let conndb = Arc::new(Mutex::new(ConnectionDb::new()));
 
     let args = Args::parse();
     if args.public {
@@ -184,10 +211,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     loop {
         let conn = endpoint.accept().await.unwrap().await.unwrap();
-        event!(Level::INFO, "Opened a new connection from {}", conn.remote_address());
-        let (writer, reader) = conn.accept_bi().await.unwrap();
-        let stream = tokio::io::join(reader, writer);
-        tokio::spawn(process(stream, serverdb.clone()));
+        event!(
+            Level::INFO,
+            "Opened a new connection from {}",
+            conn.remote_address()
+        );
+        tokio::spawn(process(conn, serverdb.clone(), conndb.clone()));
     }
 }
 
@@ -203,6 +232,6 @@ fn init_tracing() -> Result<WorkerGuard> {
         .with_writer(non_blocking)
         .with_env_filter(env_filter)
         .init();
-    
+
     Ok(guard)
 }

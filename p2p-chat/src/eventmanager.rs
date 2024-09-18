@@ -1,3 +1,4 @@
+use libchatty::messaging::{PeerMessageData, UserMessage};
 use tokio::{
     sync::mpsc,
     time::{self, Duration},
@@ -24,8 +25,7 @@ impl From<PressedKey> for KeyEvent {
 
 #[derive(Debug)]
 pub enum AppEvent {
-    SendMessage(String),
-    ReceiveMessage(String),
+    ReceiveMessage(UserMessage),
     FrameTick,
     KeyPress(PressedKey),
 }
@@ -33,23 +33,11 @@ pub enum AppEvent {
 #[derive(Debug)]
 struct EventManager {
     event_tx: mpsc::Sender<AppEvent>,
-    msg_rx: mpsc::Receiver<DisplayMessage>,
+    msg_rx: mpsc::Receiver<UserMessage>,
     token: CancellationToken,
 }
 
 impl EventManager {
-    fn new(
-        event_tx: mpsc::Sender<AppEvent>,
-        msg_rx: mpsc::Receiver<DisplayMessage>,
-        token: CancellationToken,
-    ) -> EventManager {
-        EventManager {
-            event_tx,
-            msg_rx,
-            token,
-        }
-    }
-
     async fn handle_events(&mut self) {
         let mut framerate = time::interval(Duration::from_millis(16));
         let mut event_stream = crossterm::event::EventStream::new();
@@ -60,7 +48,7 @@ impl EventManager {
                     self.event_tx.send(AppEvent::FrameTick).await.unwrap();
                 },
                 Some(msg) = self.msg_rx.recv() => {
-                    self.event_tx.send(AppEvent::ReceiveMessage(msg.to_string())).await.unwrap();
+                    self.event_tx.send(AppEvent::ReceiveMessage(msg)).await.unwrap();
                 }
                 Some(event) = event_stream.next() => {
                     if let Ok(event::Event::Key(key)) = event {
@@ -83,12 +71,14 @@ pub struct EventManagerHandle {
 
 impl EventManagerHandle {
     pub fn new(
-        msg_rx: mpsc::Receiver<DisplayMessage>,
+        msg_rx: mpsc::Receiver<UserMessage>,
         tracker: &TaskTracker,
         token: CancellationToken,
     ) -> EventManagerHandle {
         let (event_tx, event_rx) = mpsc::channel(32);
-        let mut event_mgr = EventManager::new(event_tx, msg_rx, token);
+        let mut event_mgr = EventManager {
+            event_tx, msg_rx, token
+        };
 
         tracker.spawn(async move { event_mgr.handle_events().await });
 

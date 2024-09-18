@@ -7,28 +7,54 @@ use crate::noise_codec::NoiseCodec;
 use bytes::{Bytes, BytesMut};
 use postcard::{from_bytes, to_allocvec};
 use std::marker::PhantomData;
+use chrono::{DateTime, Utc};
 
-#[derive(Serialize, Deserialize, Debug)]
+// TODO
+// Rename RelayRequest to UserToRelayMessage
+// Rename RelayResponse to RelayToUserMessage
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum RelayRequest {
+    Register(VerifyingKey),
     GetUser(VerifyingKey),
+    Ack,
     Bye,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum RelayResponse {
-    UserAddress(SocketAddr),
+    UserAddress(Option<SocketAddr>),
+    AwaitConnection(VerifyingKey, SocketAddr),
     Ack,
 }
 
-pub enum UserFrame {
-    Connect(VerifyingKey),
-    Send(Message),
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum PeerPacket {
+    Send(PeerMessageData),
     Ack,
     Bye,
 }
 
-pub enum Message {
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum PeerMessageData {
     Text(String)
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct UserMessage {
+    pub author: VerifyingKey,
+    pub content: PeerMessageData,
+    pub timestamp: DateTime<Utc>
+}
+
+impl UserMessage {
+    pub fn new(peer: VerifyingKey, message: PeerMessageData) -> Self {
+        Self {
+            author: peer,
+            content: message,
+            timestamp: Utc::now(),
+        }
+    }
 }
 
 pub struct AsymmetricMessageCodec<T, U> {

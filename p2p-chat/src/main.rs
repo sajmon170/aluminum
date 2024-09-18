@@ -1,8 +1,9 @@
 #![allow(unused)]
 
 mod connmanager;
-mod message;
+mod peermanager;
 mod eventmanager;
+mod message;
 mod controller;
 mod spawner;
 mod tui;

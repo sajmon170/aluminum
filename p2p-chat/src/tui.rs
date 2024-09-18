@@ -1,9 +1,12 @@
+use crate::message::DisplayMessage;
 use crate::messageview::{MessageView, MessageViewAction};
-use crate::friendsview::{FriendsView, FriendsViewAction};
+use crate::friendsview::{DisplayUser, FriendsView, FriendsViewAction};
 use crate::component::Component;
 use crate::eventmanager::PressedKey;
 use std::sync::{Arc, Mutex};
+use ed25519_dalek::VerifyingKey;
 use libchatty::identity::UserDb;
+use libchatty::messaging::{PeerMessageData, UserMessage};
 
 use std::{
     collections::VecDeque,
@@ -60,12 +63,27 @@ impl SelectedTab {
 
 impl<'a> Tui<'a> {
     pub fn new(db: Arc<Mutex<UserDb>>) -> Self {
+        let friends: Vec<DisplayUser> = {
+            let db = db.lock().unwrap();
+            db.remote.iter()
+                .map(|(k, v)| DisplayUser {
+                    name: v.name.clone(),
+                    surname: v.surname.clone(),
+                    key: k.clone()
+                })
+                .collect()
+        };
+        
         Self {
             message_view: MessageView::new(Vec::new()),
-            friends_view: FriendsView::new(Vec::new()),
+            friends_view: FriendsView::new(friends),
             selected_tab: SelectedTab::Friends,
             db
         }
+    }
+
+    pub fn get_current_user(&self) -> VerifyingKey {
+        self.friends_view.get_selected_user().unwrap()
     }
 
     pub fn draw(&mut self, terminal: &mut Term) -> io::Result<()> {
@@ -155,24 +173,28 @@ impl<'a> Tui<'a> {
         self.selected_tab = self.selected_tab.next();
     }
 
-    /*
-    pub async fn run(&mut self) -> io::Result<()> {
-        loop {
-            tokio::select! {
-                Some(message) = self.rx.recv() => {
-                    match message {
-                        TuiMessage::Redraw => self.draw()?,
-                        _ => { }
-                    }
-                },
-                _ = self.token.cancelled() => { break; },
-                else => { self.token.cancel() }
+    pub fn add_message(&mut self, to: VerifyingKey, msg: &UserMessage) {
+        if let Some(user) = self.friends_view.get_selected_user() {
+            if user == to {
+                let user_meta = {
+                    let db = self.db.lock().unwrap();
+                    db.remote.get(&to).unwrap().clone()
+                };
+
+                let text = match &msg.content {
+                    PeerMessageData::Text(text) => text
+                };
+
+                let message = DisplayMessage {
+                    content: text.clone(),
+                    author: user_meta.nickname,
+                    timestamp: msg.timestamp
+                };
+                
+                self.message_view.append(message);
             }
         }
-
-        Ok(())
-        }
-        */
+    }
 }
 
 pub enum TuiAction {
@@ -181,27 +203,3 @@ pub enum TuiAction {
     MessageViewAction(MessageViewAction),
     FriendsViewAction(FriendsViewAction)
 }
-
-/*
-enum TuiMessage {
-    Redraw,
-    KbdEvent(PressedKey, oneshot::Sender<TuiAction>),
-    Action(TuiAction),
-}
-
-#[derive(Debug)]
-pub struct TuiHandle {
-    pub event_tx: mpsc::Sender<TuiMessage>,
-}
-
-impl TuiHandle {
-    pub fn new(tracker: &TaskTracker, token: CancellationToken) -> Self {
-        let (event_tx, event_rx) = mpsc::channel(32);
-        let mut tui = Tui::new();
-
-        tracker.spawn(async move { event_mgr.handle_events().await });
-
-        Self { event_tx }
-    }
-}
-*/

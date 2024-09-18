@@ -28,9 +28,9 @@ pub struct FriendsView {
 }
 
 pub struct DisplayUser {
-    name: String,
-    surname: String,
-    key: VerifyingKey
+    pub name: String,
+    pub surname: String,
+    pub key: VerifyingKey
 }
 
 // TODO - optimize the string allocations away

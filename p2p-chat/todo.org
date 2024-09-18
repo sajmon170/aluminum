@@ -39,7 +39,7 @@ Compared to a user, the relay entry:
 - [X] Allow connecting to another client through relay
 - [X] Separate ingress and egress message codecs 
 - [X] Implement QUIC
-- [ ] Implement hole punching
+- [X] Implement hole punching
 - [X] Allow selecting another user to chat with
 - [-] Implement additional UI
   - [X] Allow creating multiple views

@@ -53,7 +53,7 @@ impl User {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Myself {
-    metadata: UserMetadata,
+    pub metadata: UserMetadata,
     pub private_key: SigningKey,
 }
 

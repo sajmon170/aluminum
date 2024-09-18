@@ -45,6 +45,8 @@ use std::fs::File;
 
 use tokio::io::{AsyncRead, AsyncWrite, Join};
 
+use tokio::sync::mpsc;
+
 use quinn::{Connection, RecvStream, SendStream};
 
 pub fn make_server_endpoint(
@@ -58,12 +60,19 @@ pub fn make_server_endpoint(
     Ok((endpoint, server_cert))
 }
 
+enum Notify {
+    Call(SocketAddr),
+}
+
 type ConnectionDb = HashMap<VerifyingKey, SocketAddr>;
+type NotifyDb = HashMap<SocketAddr, mpsc::Sender<Notify>>;
 
 async fn process(
     conn: Connection,
     db: Arc<Mutex<UserDb>>,
     conn_db: Arc<Mutex<ConnectionDb>>,
+    notify_db: Arc<Mutex<NotifyDb>>,
+    mut notify_rx: mpsc::Receiver<Notify>
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let addr = conn.remote_address();
 
@@ -89,67 +98,79 @@ async fn process(
 
     let (mut tx, mut rx) = stream.split();
 
-    while let Some(Ok(msg)) = rx.next().await {
-        match msg {
-            RelayRequest::Register(pubkey) => {
-                let _guard = {
-                    let mut db = conn_db.lock().unwrap();
-                    db.insert(pubkey, addr);
-                };
-
-                tx.send(RelayResponse::Ack).await;
-            }
-            RelayRequest::GetUser(pubkey) => {
-                let result = {
-                    let db = conn_db.lock().unwrap();
-                    db.get(&pubkey).and_then(|addr| Some(addr.clone()))
-                };
-
-                tx.send(RelayResponse::UserAddress(result)).await;
-            }
-            RelayRequest::Ack => { }
-            RelayRequest::Bye => break
-        }
-    }
-
-    /*
-    let _ = tokio::join!(
-        async move {
-            timeout.tick().await;
-            tx.send(Message::Ack).await?;
-            println!("Sent.");
-            timeout.tick().await;
-            tx.send(Message::Send(String::from("Jazda z kurwami"))).await?;
-            println!("Sent.");
-            timeout.tick().await;
-            tx.send(Message::Send(String::from("Żółć, polskie znaki"))).await?;
-            println!("Sent.");
-            timeout.tick().await;
-            tx.send(Message::Send("お前はもう死んでいる".into())).await?;
-            println!("Sent.");
-            timeout.tick().await;
-            tx.send(Message::Bye).await?;
-            println!("Sent.");
-
-            Ok::<(), std::io::Error>(())
-        },
-
-        async move {
-            while let Some(Ok(msg)) = rx.next().await {
+    loop {
+        tokio::select! {
+            Some(Ok(msg)) = rx.next() => {
                 match msg {
-                    Message::Send(msg) => { println!("Received message: [{msg}]") }
-                    Message::Bye => {
-                        println!("Finished session. Disconnecting...");
-                        break
+                    RelayRequest::Register(pubkey) => {
+                        event!(Level::INFO, "Registered a new user.");
+                        let _guard = {
+                            let mut db = conn_db.lock().unwrap();
+                            db.insert(pubkey, addr);
+                        };
+
+                        tx.send(RelayResponse::Ack).await;
                     }
-                    _ => { println!{"Not implemented"} }
+                    RelayRequest::GetUser(pubkey) => {
+                        let result = {
+                            let db = conn_db.lock().unwrap();
+                            db.get(&pubkey).and_then(|addr| Some(addr.clone()))
+                        };
+
+                        let db = notify_db.clone();
+
+                        tokio::join!(
+                            tx.send(RelayResponse::UserAddress(result.clone())),
+                            async move {
+                                let tx = {
+                                    let mut db = db.lock().unwrap();
+                                    db.get(&result.unwrap()).unwrap().clone()
+                                };
+                                tx.send(Notify::Call((addr.clone()))).await;
+                            }
+                        );
+                    }
+                    RelayRequest::Ack => {}
+                    RelayRequest::Bye => break,
                 }
             }
+            Some(notification) = notify_rx.recv() => {
+                let Notify::Call(addr) = notification;
+                let key = {
+                    let db = conn_db.lock().unwrap();
+                    db.iter().filter(|(k, v)| **v == addr).next().unwrap().0.clone()
+                };
+                tx.send(RelayResponse::AwaitConnection(key, addr)).await?;
             }
+        }
+        /*
+        while let Some(Ok(msg)) = rx.next().await {
+            match msg {
+                RelayRequest::Register(pubkey) => {
+                    event!(Level::INFO, "Registered a new user.");
+                    let _guard = {
+                        let mut db = conn_db.lock().unwrap();
+                        db.insert(pubkey, addr);
+                    };
 
-    );
+                    tx.send(RelayResponse::Ack).await;
+                }
+                RelayRequest::GetUser(pubkey) => {
+                    let result = {
+                        let db = conn_db.lock().unwrap();
+                        db.get(&pubkey).and_then(|addr| Some(addr.clone()))
+                    };
 
-    */
+                    //tokio::join
+                    // TODO - notify the user
+                    tx.send(RelayResponse::UserAddress(result)).await;
+                }
+                RelayRequest::Ack => {}
+                RelayRequest::Bye => break,
+            }
+        }
+*/
+    }
 
     Ok(())
 }
@@ -192,6 +213,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let conndb = Arc::new(Mutex::new(ConnectionDb::new()));
+    let notifydb = Arc::new(Mutex::new(NotifyDb::new()));
 
     let args = Args::parse();
     if args.public {
@@ -204,19 +226,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let serverdb = Arc::new(Mutex::new(serverdb));
 
-    //let listener = TcpListener::bind("127.0.0.1:50007").await?;
     let addr: SocketAddr = "127.0.0.1:50007".parse().unwrap();
     let (endpoint, _server_cert) = make_server_endpoint(addr).unwrap();
-    // accept a single connection
 
     loop {
         let conn = endpoint.accept().await.unwrap().await.unwrap();
+        let addr = conn.remote_address();
+        let (tx, rx) = mpsc::channel(32);
+        let _guard = {
+            let mut db = notifydb.lock().unwrap();
+            db.insert(addr, tx);
+        };
         event!(
             Level::INFO,
             "Opened a new connection from {}",
             conn.remote_address()
         );
-        tokio::spawn(process(conn, serverdb.clone(), conndb.clone()));
+        tokio::spawn(process(
+            conn,
+            serverdb.clone(),
+            conndb.clone(),
+            notifydb.clone(),
+            rx
+        ));
     }
 }
 

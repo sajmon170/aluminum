@@ -50,14 +50,23 @@ type QuinnStream = tokio::io::Join<quinn::RecvStream, quinn::SendStream>;
 
 impl PeerManager {
     async fn run(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        event!(Level::DEBUG, "Trying to hole-punch...");
         let mut conn = self.connect().await?;
 
         loop {
             tokio::select! {
                 Some(Ok(PeerPacket::Send(msg))) = conn.next() => {
+                    let text = match &msg {
+                        PeerMessageData::Text(text) => text.clone()
+                    };
+                    event!(Level::INFO, "Received message: {text}");
                     self.tx.send(UserMessage::new(self.peer_key, msg)).await?;
                 }
                 Some(PeerManagerCommand::Send(msg)) = self.rx.recv() => {
+                    let text = match &msg {
+                        PeerMessageData::Text(text) => text.clone()
+                    };
+                    event!(Level::INFO, "Sending message: {text}");
                     conn.send(PeerPacket::Send(msg)).await?;
                 }
                 _ = self.token.cancelled() => { break; }
@@ -74,6 +83,8 @@ impl PeerManager {
         let (writer, reader) = {
             let (incoming, outgoing) =
                 tokio::join!(self.accept_peer(), self.connect_to_peer());
+
+            event!(Level::DEBUG, "Hole punch success");
 
             match self.role {
                 P2pRole::Initiator => {
@@ -95,18 +106,25 @@ impl PeerManager {
         loop {
             let incoming = self.endpoint.accept().await.unwrap();
             if incoming.remote_address() == self.peer_addr {
+                event!(Level::DEBUG, "Accepting remote...");
                 return incoming.accept().unwrap().await;
             } else {
+                event!(Level::DEBUG, "Ignoring remote...");
                 incoming.ignore();
             }
         }
     }
 
     async fn connect_to_peer(&self) -> Result<Connection, ConnectionError> {
-        self.endpoint
+        event!(Level::DEBUG, "Connecting to peer...");
+        let result = self.endpoint
             .connect(self.peer_addr, "localhost")
             .unwrap()
-            .await
+            .await;
+
+        event!(Level::DEBUG, "Connected to peer!");
+
+        result
     }
 
     async fn upgrade_connection(

@@ -28,6 +28,13 @@ use libchatty::identity::{Myself, User, UserDb, Relay};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
+use tracing::{debug, info, instrument, trace, Level};
+use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
+use tracing_subscriber::filter::EnvFilter;
+use std::fs::File;
+
+use color_eyre::eyre::Result;
+
 fn init_tui() -> io::Result<Term> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
@@ -109,6 +116,25 @@ fn make_user() -> io::Result<Myself> {
     Ok(Myself::new(&name, &surname, &nickname, &description))
 }
 
+// TODO - move this to a common library
+// - maybe to libchatty
+// - or to another workspace dedicated to generic tooling
+fn init_tracing(name: &str) -> io::Result<WorkerGuard> {
+    let file = File::create(format!("{name}.log"))?;
+    let (non_blocking, guard) = non_blocking(file);
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(Level::DEBUG.into())
+        .from_env_lossy();
+
+    tracing_subscriber::fmt()
+        .with_writer(non_blocking)
+        .with_env_filter(env_filter)
+        .init();
+    
+    Ok(guard)
+}
+
 impl AppSpawner {
     // TODO: Fix the bug where the app panics if ~/.local/share/aluminum doesn't exist
     // TODO: separate database handling into another function
@@ -123,6 +149,9 @@ impl AppSpawner {
         } else {
             UserDb::new(args.db, make_user()?)
         };
+
+        let name = db.myself.metadata.nickname.trim();
+        let _guard = init_tracing(name)?;
 
         if let Some(path) = args.import {
             let user = User::load_file(&path);
@@ -149,6 +178,7 @@ impl AppSpawner {
                 Arc::new(Mutex::new(db)),
                 relay
             );
+            let _tracing = _guard;
             app.run().await?;
             restore_tui()?;
             Ok::<(), io::Error>(())

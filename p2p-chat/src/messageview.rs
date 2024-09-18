@@ -157,32 +157,7 @@ impl<'a> Component for MessageView<'a> {
             Self::Action::ScrollUp => self.scroll_up(),
             Self::Action::ScrollDown => self.scroll_down(),
             Self::Action::WriteKey(key) => self.write_key(key),
-            //Self::Action::ReceiveMsg(msg) => self.write_msg(msg.clone()),
-            //Self::Action::SendMsg => { }
             _ => { }
-            // TODO - implement sending messages
-            /*
-            Action::SendMsg(msg) => {
-                self.ui.write_msg(msg.clone());
-                /*
-                self.conn_manager
-                    .tx
-                    .send(ConnInstruction::Send(msg))
-                    .await
-                    .unwrap();
-    */
-                let id = {
-                    let db = self.db.lock().unwrap();
-                    db.myself.get_public_key()
-                };
-
-                self.conn_manager
-                    .tx
-                    .send(ConnInstruction::GetUser(id))
-                    .await
-                    .unwrap();
-            }
-*/
         }
         Ok(())
     }

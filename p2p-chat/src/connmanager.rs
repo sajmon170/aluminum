@@ -1,5 +1,4 @@
 use libchatty::{
-    identity::UserDb,
     messaging::{PeerMessageData, RelayRequest, RelayResponse, UserMessage},
     noise_session::*,
     quinn_session::*,
@@ -7,22 +6,18 @@ use libchatty::{
 };
 
 use std::{
-    collections::HashMap, error::Error, net::{Ipv4Addr, SocketAddr, SocketAddrV4}, sync::{Arc, Mutex}
+    collections::HashMap, error::Error, net::{Ipv4Addr, SocketAddr, SocketAddrV4}
 };
 
-use crate::{
-    message::DisplayMessage,
-    peermanager::{P2pRole, PeerManagerHandle, PeerManagerCommand},
-};
-use chrono::Utc;
+use crate::peermanager::{P2pRole, PeerManagerHandle, PeerManagerCommand};
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use libchatty::identity::{Myself, Relay};
-use quinn::{Endpoint, ServerConfig};
-use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
-use tokio::{net::TcpStream, sync::mpsc};
+use quinn::Endpoint;
+use rustls::pki_types::CertificateDer;
+use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use tracing::{event, span, Level};
+use tracing::{event, Level};
 
 type RelayConnection<T> = NoiseConnection<T, RelayRequest, RelayResponse>;
 

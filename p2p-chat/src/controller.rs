@@ -1,38 +1,30 @@
 use std::{
-    ffi::OsString,
     io::{self, Stdout},
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use ed25519_dalek::VerifyingKey;
-use tokio::{
-    sync::mpsc,
-    time::{self, Duration}
-};
+use tokio::sync::mpsc;
 
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use ratatui::{
     backend::CrosstermBackend,
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     Terminal,
 };
 
 use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle},
-    eventmanager::{AppEvent, EventManagerHandle, PressedKey},
+    eventmanager::{AppEvent, EventManagerHandle},
     tui::Tui,
     messageview::MessageViewAction
 };
 
-use libchatty::{identity::{Myself, Relay, User, UserDb}, messaging::{PeerMessageData, UserMessage}};
+use libchatty::{identity::{Myself, Relay, UserDb}, messaging::{PeerMessageData, UserMessage}};
 
-use tracing::{event, Level};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
-use futures::stream::StreamExt;
 
 use crate::tui::TuiAction;
 
@@ -125,13 +117,13 @@ impl<'a> AppController<'a> {
 
     fn add_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
         let mut db = self.db.lock().unwrap();
-        let mut log = db.messages.entry(user_log).or_insert(Vec::new());
+        let log = db.messages.entry(user_log).or_insert(Vec::new());
         log.push(msg);
     }
 
     async fn send_message(&mut self, msg: PeerMessageData, to: VerifyingKey) -> io::Result<()> {
         let identity = {
-            let mut db = self.db.lock().unwrap();
+            let db = self.db.lock().unwrap();
             db.myself.clone()
         };
 

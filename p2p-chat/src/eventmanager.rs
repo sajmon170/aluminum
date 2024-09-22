@@ -1,4 +1,4 @@
-use libchatty::messaging::{PeerMessageData, UserMessage};
+use libchatty::messaging::UserMessage;
 use tokio::{
     sync::mpsc,
     time::{self, Duration},
@@ -9,7 +9,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use ratatui::crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers};
 
-use crate::message::DisplayMessage;
 
 #[derive(Debug)]
 pub struct PressedKey {

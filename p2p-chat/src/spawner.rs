@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    io::{self, stdout, Stdout, Write},
+    io::{self, stdout, Stdout},
     panic::{set_hook, take_hook},
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -28,12 +28,11 @@ use libchatty::identity::{Myself, User, UserDb, Relay};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
-use tracing::{debug, info, instrument, trace, Level};
+use tracing::Level;
 use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
 use tracing_subscriber::filter::EnvFilter;
 use std::fs::File;
 
-use color_eyre::eyre::Result;
 
 fn init_tui() -> io::Result<Term> {
     stdout().execute(EnterAlternateScreen)?;

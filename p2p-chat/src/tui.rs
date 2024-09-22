@@ -13,17 +13,13 @@ use std::io::{self, Stdout};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     backend::CrosstermBackend,
-    crossterm::event::KeyEvent,
     prelude::*,
-    widgets::{Block, Paragraph, Tabs},
+    widgets::Tabs,
     Terminal,
 };
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
-use tokio::sync::{mpsc, oneshot};
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{EnumIter, Display, FromRepr, EnumCount as EnumCountMacro};

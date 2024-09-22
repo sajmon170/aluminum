@@ -1,21 +1,14 @@
-use std::{
-    collections::VecDeque, io::{self, Stdout}, marker::PhantomData, rc::Rc
-};
+use std::io::{self};
 
-use chrono::Utc;
 
 use ed25519_dalek::VerifyingKey;
 use ratatui::{
     prelude::*,
-    backend::CrosstermBackend,
-    crossterm::event::{KeyEvent, KeyCode},
-    widgets::{Block, Paragraph, Table, Row, Cell, TableState},
-    Terminal
+    crossterm::event::KeyCode,
+    widgets::{Table, Row, TableState}
 };
 
-use tui_textarea::TextArea;
 
-use crate::message::DisplayMessage;
 use crate::eventmanager::PressedKey;
 use crate::component::Component;
 
@@ -104,10 +97,10 @@ impl Component for FriendsView {
         if key.code == KeyCode::Down {
             Some(Self::Action::SelectNext)
         }
-        else if (key.code == KeyCode::Up) {
+        else if key.code == KeyCode::Up {
             Some(Self::Action::SelectPrev)
         }
-        else if (key.code == KeyCode::Enter) {
+        else if key.code == KeyCode::Enter {
             Some(Self::Action::SelectCurrentUser)
         }
         else {

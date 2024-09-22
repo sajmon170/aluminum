@@ -1,32 +1,23 @@
 use libchatty::{
-    identity::{Myself, Relay, UserDb},
+    identity::Myself,
     messaging::{
         PeerMessageData, PeerPacket, UserMessage
     },
     noise_session::*,
-    quinn_session::*,
     utils,
 };
 
 use std::{
     error::Error,
-    io,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    sync::{Arc, Mutex},
+    net::SocketAddr,
 };
 
-use crate::message::DisplayMessage;
-use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
-use quinn::{ClientConfig, Connection, ConnectionError, Endpoint};
-use tokio::{
-    net::TcpStream,
-    sync::mpsc,
-    time::{self, Duration},
-};
+use quinn::{Connection, ConnectionError, Endpoint};
+use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-use tracing::{event, span, Level};
+use tracing::{event, Level};
 
 type PeerConnection = NoiseConnection<QuinnStream, PeerPacket, PeerPacket>;
 

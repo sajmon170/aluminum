@@ -1,16 +1,12 @@
 use std::{
-    collections::VecDeque, io::{self, Stdout}, marker::PhantomData, rc::Rc
+    collections::VecDeque, io::{self}, rc::Rc
 };
 
-use chrono::Utc;
 
-use libchatty::messaging::{PeerMessageData, UserMessage};
 use ratatui::{
     prelude::*,
-    backend::CrosstermBackend,
     crossterm::event::{KeyEvent, KeyCode},
-    widgets::{Block, Paragraph},
-    Terminal
+    widgets::{Block, Paragraph}
 };
 
 use tui_textarea::TextArea;

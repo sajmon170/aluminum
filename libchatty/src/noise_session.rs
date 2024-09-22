@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing::{event, span, Level};
+use tracing::{event, Level};
 
 pub type NoiseConnection<T, U, V> = Framed<T, AsymmetricMessageCodec<U, V>>;
 pub type SymmetricNoiseConnection<T, U> = NoiseConnection<T, U, U>;

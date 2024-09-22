@@ -1,6 +1,6 @@
-use std::{error::Error, net::SocketAddr, sync::Arc};
+use std::{error::Error, sync::Arc};
 
-use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Endpoint, ServerConfig};
+use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, ServerConfig};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime, PrivatePkcs8KeyDer};
 
 

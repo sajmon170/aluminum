@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 mod connmanager;
 mod peermanager;
 mod eventmanager;
@@ -18,7 +16,7 @@ use color_eyre::eyre::Result;
 async fn main() -> Result<()> {
     color_eyre::install()?;
     // TODO - find out which dependency makes this line necessary
-    rustls::crypto::ring::default_provider().install_default();
+    rustls::crypto::ring::default_provider().install_default().unwrap();
 
     AppSpawner::run().await?;
 

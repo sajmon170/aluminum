@@ -8,12 +8,7 @@ use ed25519_dalek::VerifyingKey;
 use libchatty::identity::UserDb;
 use libchatty::messaging::{PeerMessageData, UserMessage};
 
-use std::{
-    collections::VecDeque,
-    io::{self, Stdout},
-    marker::PhantomData,
-    rc::Rc,
-};
+use std::io::{self, Stdout};
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{

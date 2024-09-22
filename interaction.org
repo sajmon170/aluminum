@@ -1,7 +1,7 @@
 * TODO
-- [ ] Traffic encryption
-- [ ] User identification (nicknames + passwords or keys)
-- [ ] Save user and session data on disk (Tokio async IO)
+- [X] Traffic encryption
+- [X] User identification (nicknames + passwords or keys)
+- [X] Save user and session data on disk (Tokio async IO)
 
 * Messages sent through the server
 ** Possible attacks

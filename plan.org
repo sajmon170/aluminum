@@ -1,21 +1,24 @@
 #+TITLE: Programming plan
 
 * App name
-Tin-Can (from a tin-can telephone)
-Logo: Two tin cans connected through a wire that says "Tin-Can"
+- Tin-Can (from a tin-can telephone)
+  Logo: Two tin cans connected through a wire that says "Tin-Can"
+
+- Project Aluminum
+  Contrary to their name, aluminum is the main component of tin-foil hats. It also doesn't rust.
 
 * TODO
-1. [-] Hole punching
+1. [X] Hole punching
    - [X] Connecting to a server
      - [X] TCP data transfer
      - [X] Noise IK handshake
        - [X] Implement a send/receive loop
        - [X] Detect when the handshake ends, go into a 
-   - [ ] Reading connection data (IP address and port)
-   - [ ] Storing connection data in a database
-   - [ ] Forwarding connection data between peers
+   - [X] Reading connection data (IP address and port)
+   - [X] Storing connection data in a database
+   - [X] Forwarding connection data between peers
      
-2. [ ] Sending messages
-   - [ ] Establishing connection between peers
-     - [ ] UTP data transfer
-     - [ ] Noise KK handshake
+2. [X] Sending messages
+   - [X] Establishing connection between peers
+     - [X] QUIC data transfer
+     - [X] Noise KK handshake

@@ -147,10 +147,10 @@ impl<'a> Tui<'a> {
                 match action {
                     FriendsViewAction::SelectCurrentUser => {
                         self.friends_view.react(action)?;
-                        if let Some(key) = self.friends_view.get_selected_user()
-                        {
-                            // load messages to message view
+                        if let Some(key) = self.friends_view.get_selected_user() {
+                            self.message_view.clear();
                         }
+                        self.select_tab(SelectedTab::Messages);
                     }
                     _ => {
                         self.friends_view.react(action)?;
@@ -163,7 +163,11 @@ impl<'a> Tui<'a> {
     }
 
     pub fn next_tab(&mut self) {
-        self.selected_tab = self.selected_tab.next();
+        self.select_tab(self.selected_tab.next());
+    }
+
+    fn select_tab(&mut self, tab: SelectedTab) {
+        self.selected_tab = tab;
     }
 
     pub fn add_message(&mut self, to: VerifyingKey, msg: &UserMessage) {

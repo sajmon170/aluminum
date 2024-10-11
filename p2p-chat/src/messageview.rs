@@ -31,6 +31,8 @@ pub struct MessageView<'a> {
 //   then print the wrapped text with the name characters skipped.
 //
 // Add a color field to the DisplayMessage struct
+// OR - add a style type field.
+// available styles: Recipient, Responder
 
 impl<'a> Widget for &mut MessageView<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -121,6 +123,10 @@ impl<'a> MessageView<'a> {
             self.textarea.delete_line_by_head();
             Some(self.textarea.yank_text())
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.messages.clear();
     }
 }
 

@@ -161,7 +161,7 @@ impl<'a> AppController<'a> {
                     ) => {
                         let data = PeerMessageData::Text(msg);
                         self.send_message(data, self.tui.get_current_user())
-                            .await;
+                            .await?;
                         //self.execute(AppAction::SendMessage(data, self.tui.get_current_user())).await?;
                     }
                     _ => self.tui.react(action)?,
@@ -171,7 +171,7 @@ impl<'a> AppController<'a> {
                 self.receive_message(msg);
             }
             AppAction::SendMessage(msg_data, pubkey) => {
-                self.send_message(msg_data, pubkey).await;
+                let _ = self.send_message(msg_data, pubkey).await;
             }
         };
 

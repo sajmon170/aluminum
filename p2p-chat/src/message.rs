@@ -5,12 +5,15 @@ use std::fmt;
 pub struct DisplayMessage {
     pub content: String,
     pub author: String,
-    pub timestamp: DateTime<Utc>
+    pub timestamp: DateTime<Utc>,
 }
 
 impl DisplayMessage {
     fn get_time(&self) -> String {
-        self.timestamp.with_timezone(&Local).format("%H:%M:%S").to_string()
+        self.timestamp
+            .with_timezone(&Local)
+            .format("%H:%M:%S")
+            .to_string()
     }
 }
 

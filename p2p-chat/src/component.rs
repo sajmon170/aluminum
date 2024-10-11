@@ -1,5 +1,5 @@
-pub use ratatui::prelude::*;
 use crate::eventmanager::PressedKey;
+pub use ratatui::prelude::*;
 
 pub trait Component {
     type Action;

@@ -1,29 +1,27 @@
 use std::io::{self};
 
-
 use ed25519_dalek::VerifyingKey;
 use ratatui::{
-    prelude::*,
     crossterm::event::KeyCode,
-    widgets::{Table, Row, TableState}
+    prelude::*,
+    widgets::{Row, Table, TableState},
 };
 
-
-use crate::eventmanager::PressedKey;
 use crate::component::Component;
+use crate::eventmanager::PressedKey;
 
 use base64::prelude::*;
 
 pub struct FriendsView {
     state: TableState,
     users: Vec<DisplayUser>,
-    selected_user: Option<VerifyingKey>
+    selected_user: Option<VerifyingKey>,
 }
 
 pub struct DisplayUser {
     pub name: String,
     pub surname: String,
-    pub key: VerifyingKey
+    pub key: VerifyingKey,
 }
 
 // TODO - optimize the string allocations away
@@ -39,19 +37,19 @@ impl DisplayUser {
 
 impl FriendsView {
     pub fn new(users: Vec<DisplayUser>) -> Self {
-        let selected_user = users
-            .first()
-            .and_then(|user| Some(user.key));
+        let selected_user = users.first().and_then(|user| Some(user.key));
 
         Self {
             state: TableState::new(),
             users,
-            selected_user
+            selected_user,
         }
     }
 
     pub fn select_current_user(&mut self) {
-        self.selected_user = self.state.selected()
+        self.selected_user = self
+            .state
+            .selected()
             .and_then(|idx| self.users.get(idx))
             .and_then(|user| Some(user.key))
     }
@@ -63,19 +61,15 @@ impl FriendsView {
 
 impl Widget for &mut FriendsView {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let widths = [
-            Constraint::Length(25),
-            Constraint::Min(0)
-        ];
+        let widths = [Constraint::Length(25), Constraint::Min(0)];
 
-        let rows = self.users.iter().map(|user| Row::new(vec![
-            user.get_full_display_name(),
-            user.get_display_key()
-        ]));
+        let rows = self.users.iter().map(|user| {
+            Row::new(vec![user.get_full_display_name(), user.get_display_key()])
+        });
 
         let table = Table::new(rows, widths)
             .highlight_style(Style::new().fg(Color::Black).bg(Color::White));
-        
+
         StatefulWidget::render(table, area, buf, &mut self.state);
     }
 }
@@ -83,12 +77,12 @@ impl Widget for &mut FriendsView {
 pub enum FriendsViewAction {
     SelectNext,
     SelectPrev,
-    SelectCurrentUser
+    SelectCurrentUser,
 }
 
 impl Component for FriendsView {
     type Action = FriendsViewAction;
-    
+
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_widget(self, area);
     }
@@ -112,9 +106,9 @@ impl Component for FriendsView {
         match action {
             Self::Action::SelectNext => self.state.select_next(),
             Self::Action::SelectPrev => self.state.select_previous(),
-            Self::Action::SelectCurrentUser => self.select_current_user()
+            Self::Action::SelectCurrentUser => self.select_current_user(),
         }
-        
+
         Ok(())
     }
 }

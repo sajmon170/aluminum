@@ -9,7 +9,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use ratatui::crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers};
 
-
 #[derive(Debug)]
 pub struct PressedKey {
     pub code: KeyCode,
@@ -76,7 +75,9 @@ impl EventManagerHandle {
     ) -> EventManagerHandle {
         let (event_tx, event_rx) = mpsc::channel(32);
         let mut event_mgr = EventManager {
-            event_tx, msg_rx, token
+            event_tx,
+            msg_rx,
+            token,
         };
 
         tracker.spawn(async move { event_mgr.handle_events().await });

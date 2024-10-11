@@ -8,23 +8,21 @@ use tokio::sync::mpsc;
 
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle},
     eventmanager::{AppEvent, EventManagerHandle},
+    messageview::MessageViewAction,
     tui::Tui,
-    messageview::MessageViewAction
 };
 
-use libchatty::{identity::{Myself, Relay, UserDb}, messaging::{PeerMessageData, UserMessage}};
-
+use libchatty::{
+    identity::{Myself, Relay, UserDb},
+    messaging::{PeerMessageData, UserMessage},
+};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
-
 
 use crate::tui::TuiAction;
 
@@ -33,7 +31,7 @@ pub enum AppAction {
     Redraw,
     TuiAction(TuiAction),
     ReceiveMessage(UserMessage),
-    SendMessage(PeerMessageData, VerifyingKey)
+    SendMessage(PeerMessageData, VerifyingKey),
 }
 
 pub struct AppController<'a> {
@@ -53,7 +51,7 @@ impl<'a> AppController<'a> {
         tracker: TaskTracker,
         token: CancellationToken,
         db: Arc<Mutex<UserDb>>,
-        relay: Relay
+        relay: Relay,
     ) -> Self {
         let tui = Tui::new(db.clone());
         let (message_tx, message_rx) = mpsc::channel(32);
@@ -65,7 +63,7 @@ impl<'a> AppController<'a> {
             let db = db.lock().unwrap();
             identity = db.myself.clone();
         }
-        
+
         let conn_manager = ConnManagerHandle::new(
             message_tx,
             identity,
@@ -105,7 +103,9 @@ impl<'a> AppController<'a> {
         match event {
             AppEvent::FrameTick => Some(AppAction::Redraw),
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
-            AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMessage(msg)),
+            AppEvent::ReceiveMessage(msg) => {
+                Some(AppAction::ReceiveMessage(msg))
+            }
             _ => None,
         }
     }
@@ -121,7 +121,11 @@ impl<'a> AppController<'a> {
         log.push(msg);
     }
 
-    async fn send_message(&mut self, msg: PeerMessageData, to: VerifyingKey) -> io::Result<()> {
+    async fn send_message(
+        &mut self,
+        msg: PeerMessageData,
+        to: VerifyingKey,
+    ) -> io::Result<()> {
         let identity = {
             let db = self.db.lock().unwrap();
             db.myself.clone()
@@ -129,7 +133,7 @@ impl<'a> AppController<'a> {
 
         let user_msg = UserMessage::new(identity.get_public_key(), msg.clone());
 
-        self.tui.add_message(to, &user_msg);        
+        self.tui.add_message(to, &user_msg);
         self.add_message(to, user_msg);
 
         self.conn_manager
@@ -152,12 +156,15 @@ impl<'a> AppController<'a> {
             }
             AppAction::TuiAction(action) => {
                 match action {
-                    TuiAction::MessageViewAction(MessageViewAction::SendMsg(msg)) => {
+                    TuiAction::MessageViewAction(
+                        MessageViewAction::SendMsg(msg),
+                    ) => {
                         let data = PeerMessageData::Text(msg);
-                        self.send_message(data, self.tui.get_current_user()).await;
+                        self.send_message(data, self.tui.get_current_user())
+                            .await;
                         //self.execute(AppAction::SendMessage(data, self.tui.get_current_user())).await?;
                     }
-                    _ => self.tui.react(action)?
+                    _ => self.tui.react(action)?,
                 };
             }
             AppAction::ReceiveMessage(msg) => {

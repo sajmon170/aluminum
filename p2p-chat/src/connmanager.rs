@@ -6,10 +6,12 @@ use libchatty::{
 };
 
 use std::{
-    collections::HashMap, error::Error, net::{Ipv4Addr, SocketAddr, SocketAddrV4}
+    collections::HashMap,
+    error::Error,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 
-use crate::peermanager::{P2pRole, PeerManagerHandle, PeerManagerCommand};
+use crate::peermanager::{P2pRole, PeerManagerCommand, PeerManagerHandle};
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use libchatty::identity::{Myself, Relay};
@@ -95,7 +97,7 @@ impl ConnManager {
                             self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Initiator);
                         }
                     }
-                    
+
                     if self.connections.contains_key(&pubkey) {
                         self.connections
                             .get(&pubkey)
@@ -135,7 +137,7 @@ impl ConnManager {
             self.token.clone(),
             role,
             self.tracker.clone(),
-            self.tx.clone()
+            self.tx.clone(),
         );
         self.connections.insert(pubkey, handle);
     }

@@ -1,16 +1,11 @@
 use libchatty::{
     identity::Myself,
-    messaging::{
-        PeerMessageData, PeerPacket, UserMessage
-    },
+    messaging::{PeerMessageData, PeerPacket, UserMessage},
     noise_session::*,
     utils,
 };
 
-use std::{
-    error::Error,
-    net::SocketAddr,
-};
+use std::{error::Error, net::SocketAddr};
 
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -99,7 +94,8 @@ impl PeerManager {
             if incoming.remote_address() == self.peer_addr {
                 event!(Level::DEBUG, "Accepting remote...");
                 return incoming.accept().unwrap().await;
-            } else {
+            }
+            else {
                 event!(Level::DEBUG, "Ignoring remote...");
                 incoming.ignore();
             }
@@ -108,7 +104,8 @@ impl PeerManager {
 
     async fn connect_to_peer(&self) -> Result<Connection, ConnectionError> {
         event!(Level::DEBUG, "Connecting to peer...");
-        let result = self.endpoint
+        let result = self
+            .endpoint
             .connect(self.peer_addr, "localhost")
             .unwrap()
             .await;

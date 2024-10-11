@@ -1,37 +1,42 @@
 use std::{
-    collections::VecDeque, io::{self}, rc::Rc
+    collections::VecDeque,
+    io::{self},
+    rc::Rc,
 };
 
-
 use ratatui::{
+    crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    crossterm::event::{KeyEvent, KeyCode},
-    widgets::{Block, Paragraph}
+    widgets::{Block, Paragraph},
 };
 
 use tui_textarea::TextArea;
 
-use crate::message::DisplayMessage;
-use crate::eventmanager::PressedKey;
 use crate::component::Component;
+use crate::eventmanager::PressedKey;
+use crate::message::DisplayMessage;
 
 #[derive(Debug)]
 pub struct MessageView<'a> {
     scroll_pos: u16,
     max_scroll: u16,
     textarea: TextArea<'a>,
-    messages: Vec<String>
+    messages: Vec<String>,
 }
 
+// TODO
+// - either replace textwrap with .wrap()
+// OR
+// - use textwrap as normal but print the formatted name first,
+//   then print the wrapped text with the name characters skipped.
+//
+// Add a color field to the DisplayMessage struct
 
 impl<'a> Widget for &mut MessageView<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(vec![
-                Constraint::Min(0),
-                Constraint::Length(3),
-            ])
+            .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
             .split(area);
 
         let items = MessageView::get_lines(&layout, &self.messages);
@@ -44,15 +49,10 @@ impl<'a> Widget for &mut MessageView<'a> {
         Paragraph::new(Text::from(items))
             .scroll((self.max_scroll - self.scroll_pos, 0))
             .render(layout[0], buf);
-        
+
         Widget::render(&self.textarea, layout[1], buf);
     }
 }
-
-// TODO:
-//   - create a new component trait
-//   - replace the StatefulWidget with &Widget
-//   - create a new Window enum that can store multiple components inside
 
 // TODO:
 // - load messages in a better way
@@ -61,18 +61,23 @@ impl<'a> MessageView<'a> {
         let mut textarea = TextArea::default();
         textarea.set_block(Block::bordered());
         textarea.set_cursor_line_style(Style::default());
-        
+
         Self {
             scroll_pos: 0,
             max_scroll: 0,
             textarea,
-            messages
+            messages,
         }
     }
-    
+
     // TODO - Convert this to iterators (i.e. - remove the VecDeque allocation)
-    fn get_lines<'b>(layout: &Rc<[Rect]>, messages: &'b Vec<String>) -> Vec<Line<'b>> {
-        let mut lines: VecDeque<Line> = messages.iter().zip(0..messages.len())
+    fn get_lines<'b>(
+        layout: &Rc<[Rect]>,
+        messages: &'b Vec<String>,
+    ) -> Vec<Line<'b>> {
+        let mut lines: VecDeque<Line> = messages
+            .iter()
+            .zip(0..messages.len())
             .map(|(msg, idx)| {
                 textwrap::wrap(msg, layout[0].width as usize)
                     .into_iter()
@@ -130,7 +135,7 @@ pub enum MessageViewAction {
 
 impl<'a> Component for MessageView<'a> {
     type Action = MessageViewAction;
-    
+
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_widget(self, area);
     }
@@ -138,12 +143,15 @@ impl<'a> Component for MessageView<'a> {
     fn handle_kbd_event(&mut self, key: PressedKey) -> Option<Self::Action> {
         if key.code == KeyCode::Down {
             Some(Self::Action::ScrollDown)
-        } else if key.code == KeyCode::Up {
+        }
+        else if key.code == KeyCode::Up {
             Some(Self::Action::ScrollUp)
-        } else if key.code == KeyCode::Enter {
+        }
+        else if key.code == KeyCode::Enter {
             self.extract_msg()
                 .map_or(None, |msg| Some(Self::Action::SendMsg(msg)))
-        } else {
+        }
+        else {
             Some(Self::Action::WriteKey(key))
         }
     }
@@ -153,7 +161,7 @@ impl<'a> Component for MessageView<'a> {
             Self::Action::ScrollUp => self.scroll_up(),
             Self::Action::ScrollDown => self.scroll_down(),
             Self::Action::WriteKey(key) => self.write_key(key),
-            _ => { }
+            _ => {}
         }
         Ok(())
     }

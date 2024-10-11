@@ -24,15 +24,14 @@ use clap::Parser;
 
 use crate::controller::AppController;
 
-use libchatty::identity::{Myself, User, UserDb, Relay};
+use libchatty::identity::{Myself, Relay, User, UserDb};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
+use std::fs::File;
 use tracing::Level;
 use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
 use tracing_subscriber::filter::EnvFilter;
-use std::fs::File;
-
 
 fn init_tui() -> io::Result<Term> {
     stdout().execute(EnterAlternateScreen)?;
@@ -71,7 +70,7 @@ struct Args {
     import: Option<PathBuf>,
     /// Exports your identity to a file
     #[arg(long, value_name = "PATH")]
-    export: Option<PathBuf>
+    export: Option<PathBuf>,
 }
 
 fn get_default_path() -> OsString {
@@ -112,7 +111,7 @@ fn make_user() -> io::Result<Myself> {
     let mut description = String::new();
     io::stdin().read_line(&mut description)?;
 
-    Ok(Myself::new(&name, &surname, &nickname, &description))
+    Ok(Myself::new(name.trim(), surname.trim(), nickname.trim(), description.trim()))
 }
 
 // TODO - move this to a common library
@@ -130,7 +129,7 @@ fn init_tracing(name: &str) -> io::Result<WorkerGuard> {
         .with_writer(non_blocking)
         .with_env_filter(env_filter)
         .init();
-    
+
     Ok(guard)
 }
 
@@ -145,7 +144,8 @@ impl AppSpawner {
 
         let mut db = if args.db.exists() {
             UserDb::load(&args.db)
-        } else {
+        }
+        else {
             UserDb::new(args.db, make_user()?)
         };
 
@@ -175,7 +175,7 @@ impl AppSpawner {
                 app_tracker,
                 token,
                 Arc::new(Mutex::new(db)),
-                relay
+                relay,
             );
             let _tracing = _guard;
             app.run().await?;

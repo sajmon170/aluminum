@@ -160,7 +160,7 @@ impl ConnManager {
         let server_key =
             utils::ed25519_verifying_to_x25519(&self.relay.public_key);
 
-        let transport =
+        let (transport, _) =
             NoiseTransportBuilder::<T, RelayRequest, RelayResponse>::new(
                 my_keys, stream,
             )

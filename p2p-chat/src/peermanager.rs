@@ -122,14 +122,14 @@ impl PeerManager {
         let my_keys = utils::ed25519_to_noise(&self.identity.private_key);
         let peer_key = utils::ed25519_verifying_to_x25519(&self.peer_key);
 
-        let transport =
+        let transport  =
             NoiseTransportBuilder::<QuinnStream, PeerPacket, PeerPacket>::new(
                 my_keys, stream,
             )
             .set_my_type(NoiseSelfType::K)
             .set_peer_type(NoisePeerType::K(peer_key));
 
-        let transport = match self.role {
+        let (transport, _) = match self.role {
             P2pRole::Initiator => transport.build_as_initiator().await?,
             P2pRole::Responder => transport.build_as_responder().await?,
         };

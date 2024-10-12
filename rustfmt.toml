@@ -1,1 +1,3 @@
+unstable_features = true
 max_width = 80
+control_brace_style = "ClosingNextLine"

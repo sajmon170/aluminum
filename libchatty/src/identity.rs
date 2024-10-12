@@ -1,13 +1,13 @@
+use crate::messaging::UserMessage;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
     fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
-    net::SocketAddr
 };
-use crate::messaging::UserMessage;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMetadata {
@@ -28,7 +28,7 @@ pub struct User {
 pub struct Relay {
     pub addr: SocketAddr,
     #[serde(with = "crate::base64_codec")]
-    pub public_key: VerifyingKey
+    pub public_key: VerifyingKey,
 }
 
 impl Relay {
@@ -97,7 +97,7 @@ pub struct UserDb {
     path: PathBuf,
     pub myself: Myself, // TODO: Make this a list of multiple identities
     pub remote: HashMap<VerifyingKey, UserMetadata>,
-    pub messages: HashMap<VerifyingKey, Vec<UserMessage>>
+    pub messages: HashMap<VerifyingKey, Vec<UserMessage>>,
 }
 
 // TODO: Make this safe - implement error handling!
@@ -109,7 +109,7 @@ impl UserDb {
             path,
             myself,
             remote: HashMap::new(),
-            messages: HashMap::new()
+            messages: HashMap::new(),
         }
     }
 

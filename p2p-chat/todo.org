@@ -27,7 +27,7 @@ Compared to a user, the relay entry:
 - contains an IP address
 - doesn't contain any user information other than the Ed25519 identity key
 
-* TODO
+* TODO Base features
 - [X] Streamline CancellationToken argument types
 - [X] Add tracing support
 - [X] Allow sending messages
@@ -41,19 +41,37 @@ Compared to a user, the relay entry:
 - [X] Implement QUIC
 - [X] Implement hole punching
 - [X] Allow selecting another user to chat with
-- [-] Implement additional UI
+
+Good luck, keep yourself hydrated with monster energy...
+
+* TODO Extended features
+- [-] UI features
   - [X] Allow creating multiple views
   - [X] Tab selection
   - [ ] Loading friends into database
-  - [ ] Selecting friends
+  - [X] Selecting friends
   - [ ] Message notifications
+  - [ ] Add colors to name handles
+  - [ ] Gray out the time
+  - [ ] Prettify tabs
+- [X] Load message history for each peer
+- [ ] Implement the database as a vector of Arc values
+- [ ] Handle connection errors
+  - [ ] Add a "connected" status bar to UI instead of panicking
+  - [ ] Fix crashing when sending a message to an offline host
+- [ ] Make the register() RPC safe
+  - [ ] Compare the received Ed25519 key to the the X25519 Noise handshake key returned from the handshake function
+- [ ] Replace the event management framework with callbacks
 - [ ] Implement RPCs with Tower Services
-- [ ] Streamline Result return type (reduce dynamic dispatch)
-- [ ] Prettify the code with rustfmt-unstable
-- [ ] Streamline the Action type (everything should return AppAction (but won't this lead to circular dependencies?))
-  - [ ] implement ~.into()~ for each enum variant
+- [ ] Streamline the Result return type (reduce dynamic dispatch)
+- [X] Prettify the code with rustfmt-unstable
 
-Good luck, keep yourself hydrated with monster energy...
+* TODO bugfixing
+- [X] Fix connection timeout
+- [X] Fix UI issues
+  - [X] Fix strings getting saved with a newline into the database
+  - [X] Fix names display - currently all messages (including our own) get rendered with peer's name
+  - [X] Scroll the UI to bottom when a new message gets sent
 
 * Sending messages
 - Messages originate from the GUI

@@ -1,8 +1,9 @@
-use std::{error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 
 use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, ServerConfig};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime, PrivatePkcs8KeyDer};
-
+use rustls::pki_types::{
+    CertificateDer, PrivatePkcs8KeyDer, ServerName, UnixTime,
+};
 
 // Implementation of `ServerCertVerifier` that verifies everything as trustworthy.
 #[derive(Debug)]
@@ -84,6 +85,7 @@ pub fn configure_server() -> Result<
         priv_key.into(),
     )?;
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
+    transport_config.keep_alive_interval(Some(Duration::from_secs(20)));
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
     Ok((server_config, cert_der))

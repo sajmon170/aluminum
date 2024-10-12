@@ -97,6 +97,11 @@ impl<'a> MessageView<'a> {
 
     pub fn append(&mut self, msg: DisplayMessage) {
         self.messages.push(msg.to_string());
+        self.reset_scroll();
+    }
+
+    pub fn reset_scroll(&mut self) {
+        self.scroll_pos = 0;
     }
 
     pub fn scroll_down(&mut self) {

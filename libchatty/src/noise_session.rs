@@ -2,7 +2,7 @@ use crate::{messaging::AsymmetricMessageCodec, noise_codec::NoiseCodec};
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use snow::{Builder, HandshakeState, Keypair};
+use snow::{Builder, HandshakeState, Keypair, TransportState};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -102,7 +102,7 @@ where
     pub async fn build_as_initiator(
         mut self,
     ) -> Result<
-        Framed<T, AsymmetricMessageCodec<U, V>>,
+        (Framed<T, AsymmetricMessageCodec<U, V>>, Option<Vec<u8>>),
         Box<dyn Error + Send + Sync>,
     > {
         event!(Level::INFO, "Building as initiator");
@@ -121,16 +121,17 @@ where
 
         let noise = noise.build_initiator()?;
         let noise = handshake(noise, &mut self.stream).await?;
-        event!(Level::INFO, "Finished the Noise handshake");
-        let codec = AsymmetricMessageCodec::<U, V>::new(noise);
 
-        Ok(Framed::new(self.stream, codec))
+        let remote_key = noise.get_remote_static().map(|x| Vec::from(x));
+        let codec = AsymmetricMessageCodec::<U, V>::new(NoiseCodec::new(noise));
+
+        Ok((Framed::new(self.stream, codec), remote_key))
     }
 
     pub async fn build_as_responder(
         mut self,
     ) -> Result<
-        Framed<T, AsymmetricMessageCodec<V, U>>,
+        (Framed<T, AsymmetricMessageCodec<V, U>>, Option<Vec<u8>>),
         Box<dyn Error + Send + Sync>,
     > {
         let protocol = format!(
@@ -147,15 +148,18 @@ where
 
         let noise = noise.build_responder()?;
         let noise = handshake(noise, &mut self.stream).await?;
-        let codec = AsymmetricMessageCodec::<V, U>::new(noise);
-        Ok(Framed::new(self.stream, codec))
+        
+        let remote_key = noise.get_remote_static().map(|x| Vec::from(x));
+        let codec = AsymmetricMessageCodec::<V, U>::new(NoiseCodec::new(noise));
+
+        Ok((Framed::new(self.stream, codec), remote_key))
     }
 }
 
 async fn handshake<T>(
     mut noise: HandshakeState,
     stream: &mut T,
-) -> Result<NoiseCodec, Box<dyn Error + Send + Sync>>
+) -> Result<TransportState, Box<dyn Error + Send + Sync>>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
@@ -180,7 +184,8 @@ where
             buf.truncate(len);
             framed.send(Bytes::from(buf.clone())).await?;
             event!(Level::INFO, "Sent handshake message");
-        } else {
+        }
+        else {
             event!(Level::INFO, "Trying to receive a handshake message");
             let msg = framed.next().await.unwrap()?;
             event!(Level::INFO, "Received handshake message");
@@ -189,6 +194,12 @@ where
         }
     }
 
-    let noise = noise.into_transport_mode()?;
+    Ok(noise.into_transport_mode()?)
+        /*
+    if let Some(key) = noise.get_remote_static() {
+        event!(Level::INFO, "Connected to: {:?}", key);
+    }
+    
     Ok(NoiseCodec::new(noise))
+        */
 }

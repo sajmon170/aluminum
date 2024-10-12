@@ -1,13 +1,13 @@
 use ed25519_dalek::VerifyingKey;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::noise_codec::NoiseCodec;
 use bytes::{Bytes, BytesMut};
+use chrono::{DateTime, Utc};
 use postcard::{from_bytes, to_allocvec};
 use std::marker::PhantomData;
-use chrono::{DateTime, Utc};
 
 // TODO
 // Rename RelayRequest to UserToRelayMessage
@@ -37,14 +37,14 @@ pub enum PeerPacket {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum PeerMessageData {
-    Text(String)
+    Text(String),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct UserMessage {
     pub author: VerifyingKey,
     pub content: PeerMessageData,
-    pub timestamp: DateTime<Utc>
+    pub timestamp: DateTime<Utc>,
 }
 
 impl UserMessage {
@@ -70,7 +70,11 @@ where
 {
     type Error = std::io::Error;
 
-    fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: T,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         let serialized: Vec<u8> = to_allocvec(&item).unwrap();
         self.noise_codec.encode(Bytes::from(serialized), dst)
     }
@@ -84,14 +88,15 @@ where
     type Item = U;
     type Error = std::io::Error;
 
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(
+        &mut self,
+        src: &mut BytesMut,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         let result = self.noise_codec.decode(src)?;
 
         match result {
-            Some(data) => {
-                Ok(Some(from_bytes::<Self::Item>(&data).unwrap()))
-            }
-            None => Ok(None)
+            Some(data) => Ok(Some(from_bytes::<Self::Item>(&data).unwrap())),
+            None => Ok(None),
         }
     }
 }
@@ -101,7 +106,7 @@ impl<T, U> AsymmetricMessageCodec<T, U> {
         AsymmetricMessageCodec {
             encoded_type: PhantomData,
             decoded_type: PhantomData,
-            noise_codec
+            noise_codec,
         }
     }
 }

@@ -149,8 +149,9 @@ impl<'a> Tui<'a> {
                         self.friends_view.react(action)?;
                         if let Some(key) = self.friends_view.get_selected_user() {
                             self.message_view.clear();
+                            self.load_messages(key);
+                            self.select_tab(SelectedTab::Messages);
                         }
-                        self.select_tab(SelectedTab::Messages);
                     }
                     _ => {
                         self.friends_view.react(action)?;
@@ -168,6 +169,17 @@ impl<'a> Tui<'a> {
 
     fn select_tab(&mut self, tab: SelectedTab) {
         self.selected_tab = tab;
+    }
+
+    pub fn load_messages(&mut self, user: VerifyingKey) {
+        let msgs = {
+            let db = self.db.lock().unwrap();
+            db.messages.get(&user).unwrap_or(&Vec::new()).clone()
+        };
+
+        for msg in &msgs {
+            self.add_message(self.get_current_user(), msg);
+        }
     }
 
     pub fn add_message(&mut self, to: VerifyingKey, msg: &UserMessage) {

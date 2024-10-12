@@ -72,7 +72,7 @@ async fn process(
     db: Arc<Mutex<UserDb>>,
     conn_db: Arc<Mutex<ConnectionDb>>,
     notify_db: Arc<Mutex<NotifyDb>>,
-    mut notify_rx: mpsc::Receiver<Notify>
+    mut notify_rx: mpsc::Receiver<Notify>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let addr = conn.remote_address();
 
@@ -85,7 +85,7 @@ async fn process(
         utils::ed25519_to_noise(key)
     };
 
-    let mut stream = NoiseTransportBuilder::<
+    let (mut stream, remote_key) = NoiseTransportBuilder::<
         Join<RecvStream, SendStream>,
         RelayRequest,
         RelayResponse,
@@ -97,19 +97,40 @@ async fn process(
     .expect("Handshake error");
 
     let (mut tx, mut rx) = stream.split();
+    let remote_noise_key = remote_key.unwrap();
+
+    let msg = rx.next().await.unwrap()?;
+    let remote_identity_key = match msg {
+        RelayRequest::Register(pubkey) => {
+            event!(Level::DEBUG, "Received a registration request.");
+            if utils::ed25519_verifying_to_x25519(&pubkey) != remote_noise_key {
+                Err("Protocol violation: registration key doesn't match")
+            }
+            else {
+                Ok(pubkey)
+            }
+        }
+        _ => {
+            Err("Protocol violation: expected Register")
+        }
+    }?;
+
+    tx.send(RelayResponse::Ack).await?;
+
+    let _guard = {
+        let mut db = conn_db.lock().unwrap();
+        db.insert(remote_identity_key, addr);
+    };
+
+    event!(Level::INFO, "Registered a new user: {:?}", remote_identity_key.as_bytes());
 
     loop {
         tokio::select! {
             Some(Ok(msg)) = rx.next() => {
                 match msg {
                     RelayRequest::Register(pubkey) => {
-                        event!(Level::INFO, "Registered a new user.");
-                        let _guard = {
-                            let mut db = conn_db.lock().unwrap();
-                            db.insert(pubkey, addr);
-                        };
-
-                        tx.send(RelayResponse::Ack).await;
+                        event!(Level::DEBUG, "Received another registration request. Ignoring.");
+                        tx.send(RelayResponse::Ack).await?;
                     }
                     RelayRequest::GetUser(pubkey) => {
                         let result = {
@@ -143,40 +164,12 @@ async fn process(
                 tx.send(RelayResponse::AwaitConnection(key, addr)).await?;
             }
         }
-        /*
-        while let Some(Ok(msg)) = rx.next().await {
-            match msg {
-                RelayRequest::Register(pubkey) => {
-                    event!(Level::INFO, "Registered a new user.");
-                    let _guard = {
-                        let mut db = conn_db.lock().unwrap();
-                        db.insert(pubkey, addr);
-                    };
-
-                    tx.send(RelayResponse::Ack).await;
-                }
-                RelayRequest::GetUser(pubkey) => {
-                    let result = {
-                        let db = conn_db.lock().unwrap();
-                        db.get(&pubkey).and_then(|addr| Some(addr.clone()))
-                    };
-
-                    //tokio::join
-                    // TODO - notify the user
-                    tx.send(RelayResponse::UserAddress(result)).await;
-                }
-                RelayRequest::Ack => {}
-                RelayRequest::Bye => break,
-            }
-        }
-*/
     }
 
     Ok(())
 }
 
 fn get_default_path() -> PathBuf {
-    // TODO: change app's name
     dirs::data_dir()
         .unwrap()
         .join("aluminum")
@@ -200,7 +193,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let path = get_default_path();
     let serverdb = if path.exists() {
         UserDb::load(&path)
-    } else {
+    }
+    else {
         UserDb::new(
             path,
             Myself::new(
@@ -247,7 +241,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             serverdb.clone(),
             conndb.clone(),
             notifydb.clone(),
-            rx
+            rx,
         ));
     }
 }

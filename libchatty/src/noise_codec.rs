@@ -1,6 +1,6 @@
-use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
-use snow::TransportState;
 use bytes::{Bytes, BytesMut};
+use snow::TransportState;
+use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
 pub struct NoiseCodec {
     framing_codec: LengthDelimitedCodec,
@@ -21,7 +21,11 @@ impl NoiseCodec {
 impl Encoder<Bytes> for NoiseCodec {
     type Error = std::io::Error;
 
-    fn encode(&mut self, data: Bytes, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        data: Bytes,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
         let mut buf = vec![0; 65535];
         let len = self.noise.write_message(&data, &mut buf).unwrap();
         buf.truncate(len);
@@ -33,7 +37,10 @@ impl Decoder for NoiseCodec {
     type Item = Bytes;
     type Error = std::io::Error;
 
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(
+        &mut self,
+        src: &mut BytesMut,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         let result = self.framing_codec.decode(src)?;
 
         match result {

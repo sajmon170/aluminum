@@ -14,6 +14,7 @@ use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle},
     eventmanager::{AppEvent, EventManagerHandle},
     messageview::MessageViewAction,
+    friendsview::FriendsViewAction,
     tui::Tui,
 };
 
@@ -21,6 +22,8 @@ use libchatty::{
     identity::{Myself, Relay, UserDb},
     messaging::{PeerMessageData, UserMessage},
 };
+
+use tracing::{event, Level};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 

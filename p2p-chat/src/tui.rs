@@ -6,6 +6,7 @@ use crate::messageview::{MessageView, MessageViewAction};
 use ed25519_dalek::VerifyingKey;
 use libchatty::identity::UserDb;
 use libchatty::messaging::{PeerMessageData, UserMessage};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use std::sync::{Arc, Mutex};
 
 use std::io::{self, Stdout};
@@ -23,6 +24,7 @@ pub struct Tui<'a> {
     selected_tab: SelectedTab,
     friends_view: FriendsView,
     db: Arc<Mutex<UserDb>>,
+    conn_status: ConnectionStatus
 }
 
 // TODO - port this to an actor architecture
@@ -38,11 +40,25 @@ enum SelectedTab {
     Messages,
 }
 
+#[derive(Copy, Clone, Display, EnumIter, FromRepr, EnumCountMacro)]
+enum ConnectionStatus {
+    #[strum(to_string = "Connecting")]
+    Connecting,
+    #[strum(to_string = "Connected")]
+    Connected,
+    #[strum(to_string = "Offline")]
+    Offline
+}
+
 impl SelectedTab {
     fn next(self) -> Self {
         let current_idx = self as usize;
         let next_idx = (current_idx + 1) % Self::COUNT;
         Self::from_repr(next_idx).unwrap()
+    }
+
+    fn title(self) -> String {
+        format!("  {self}  ")
     }
 }
 
@@ -65,6 +81,7 @@ impl<'a> Tui<'a> {
             friends_view: FriendsView::new(friends),
             selected_tab: SelectedTab::Friends,
             db,
+            conn_status: ConnectionStatus::Connecting
         }
     }
 
@@ -72,34 +89,72 @@ impl<'a> Tui<'a> {
         self.friends_view.get_selected_user().unwrap()
     }
 
+    fn get_accent_color(&self) -> Color {
+        match self.conn_status {
+            ConnectionStatus::Connecting => Color::LightYellow,
+            ConnectionStatus::Connected => Color::LightGreen,
+            ConnectionStatus::Offline => Color::LightRed
+        }
+    }
+
     pub fn draw(&mut self, terminal: &mut Term) -> io::Result<()> {
         terminal.draw(|frame| {
-            let layout = Layout::default()
+            let [top, content] = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints(vec![Constraint::Length(2), Constraint::Min(0)])
-                .split(frame.area());
+                .areas(frame.area());
 
-            let titles = SelectedTab::iter().map(|tab| tab.to_string());
-            let tabs = Tabs::new(titles)
-                .select(self.selected_tab as usize)
-                .padding("", "")
-                .divider(" ");
+            self.draw_top_bar(top, frame);
 
-            frame.render_widget(tabs, layout[0]);
-
-            // Big problem - can't use enum dispatch because of the associated type
-            // This needs to be fixed immediately!!!
             match self.selected_tab {
                 SelectedTab::Friends => {
-                    self.friends_view.draw(frame, layout[1])
+                    self.friends_view.draw(frame, content)
                 }
                 SelectedTab::Messages => {
-                    self.message_view.draw(frame, layout[1])
+                    self.message_view.draw(frame, content)
                 }
             }
         })?;
 
         Ok(())
+    }
+
+    fn draw_top_bar(&self, top: Rect, frame: &mut Frame) {
+        let [top, separator] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Percentage(50), Constraint::Min(0)])
+            .areas(top);
+        
+        let [tab_area, status_area] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Min(0), Constraint::Length(15)])
+            .areas(top);
+
+        let titles = SelectedTab::iter().map(SelectedTab::title);
+        let tabs = Tabs::new(titles)
+            .highlight_style(Style::default()
+                                .bg(self.get_accent_color())
+                                .fg(Color::Black))
+            .select(self.selected_tab as usize)
+            .padding("", "")
+            .divider(" ");
+
+        frame.render_widget(tabs, tab_area);
+
+        let border = Block::default()
+            .borders(Borders::TOP)
+            .border_set(symbols::border::PROPORTIONAL_TALL)
+            .style(Style::default().fg(self.get_accent_color()));
+
+        frame.render_widget(border, separator);
+
+        let conn_info = Paragraph::new(Line::from(vec![
+            Span::from(self.conn_status.to_string()),
+            Span::styled(" ●  ", Style::default().fg(self.get_accent_color()))
+        ])).alignment(Alignment::Right);
+
+        frame.render_widget(conn_info, status_area);
+        
     }
 
     pub fn handle_kbd_event(&mut self, key: PressedKey) -> Option<AppAction> {

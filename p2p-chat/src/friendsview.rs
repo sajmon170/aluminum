@@ -27,7 +27,7 @@ pub struct DisplayUser {
 // TODO - optimize the string allocations away
 impl DisplayUser {
     pub fn get_full_display_name(&self) -> String {
-        format!("{}, {}", self.name, self.surname)
+        format!("{} {}", self.name, self.surname)
     }
 
     pub fn get_display_key(&self) -> String {

@@ -1,5 +1,6 @@
 use libchatty::{
     messaging::{PeerMessageData, RelayRequest, RelayResponse, UserMessage},
+    identity::{Myself, Relay},
     noise_session::*,
     quinn_session::*,
     utils,
@@ -8,24 +9,23 @@ use libchatty::{
 use std::{
     collections::HashMap,
     error::Error,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4}, time::Duration,
 };
 
 use crate::peermanager::{P2pRole, PeerManagerCommand, PeerManagerHandle};
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
-use libchatty::identity::{Myself, Relay};
-use quinn::Endpoint;
+use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use rustls::pki_types::CertificateDer;
-use tokio::sync::mpsc;
+use tokio::{io::Join, sync::mpsc, time::sleep};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{event, Level};
 
 type RelayConnection<T> = NoiseConnection<T, RelayRequest, RelayResponse>;
+type QuicRelayConn = RelayConnection<Join<RecvStream, SendStream>>;
 
 // TODO: Maybe move this to libchatty?
-// Try to make this work both for the p2p clients and the relay server
-// TODO: Maybe rename this, this acts like a Main
+// Try to make this work for both the p2p clients and the relay server
 #[derive(Debug)]
 struct ConnManager {
     identity: Myself,
@@ -50,12 +50,57 @@ fn make_server_endpoint(
 
 impl ConnManager {
     async fn run(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let (endpoint, _conn, mut stream) = self.connect().await?;
+
+        loop {
+            tokio::select! {
+                Some(ConnInstruction::Send(pubkey, message)) = self.rx.recv() => {
+                    if !self.connections.contains_key(&pubkey) {
+                        stream.send(RelayRequest::GetUser(pubkey)).await?;
+                        
+                        let addr = stream.next().await
+                            .ok_or("Connection ended unexpectedly")??
+                            .as_user_address()
+                            .ok_or("Expected address, received something else")?
+                            .ok_or("Couldn't find a peer.")?;
+
+                        // ^ TODO: Instead of crashing send a message to the UI
+                        // that the peer couldn't be found.
+
+                        event!(Level::INFO, "Trying to connect to: {addr}");
+                        self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Initiator);
+                    }
+
+                    self.connections
+                        .get(&pubkey)
+                        .unwrap()
+                        .tx
+                        .send(PeerManagerCommand::Send(message))
+                        .await?;
+                }
+                Some(Ok(RelayResponse::AwaitConnection(pubkey, addr))) = stream.next() => {
+                    self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Responder);
+                }
+                _ = self.token.cancelled() => { break }
+                else => { self.token.cancel(); }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn connect(
+        &mut self,
+    ) -> Result<
+        (Endpoint, Connection, QuicRelayConn),
+        Box<dyn Error + Send + Sync>,
+    > {
         event!(Level::DEBUG, "Configuring self");
-        //let mut endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap())?;
         let bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let (mut endpoint, _server_cert) =
             make_server_endpoint(bind_addr).unwrap();
 
+        // TODO: get server address from config
         let server_addr = SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(127, 0, 0, 1),
             50007,
@@ -67,13 +112,11 @@ impl ConnManager {
 
         event!(Level::DEBUG, "Starting connection");
         let conn = endpoint
-            .connect(server_addr, "localhost")
-            .unwrap()
-            .await
-            .unwrap();
+            .connect(server_addr, "localhost")?
+            .await?;
 
         event!(Level::DEBUG, "Opened connection");
-        let (writer, reader) = conn.open_bi().await.unwrap();
+        let (writer, reader) = conn.open_bi().await?;
         let stream = tokio::io::join(reader, writer);
         event!(Level::DEBUG, "Converted to a stream");
         let mut stream = self.upgrade_relay_connection(stream).await?;
@@ -86,40 +129,7 @@ impl ConnManager {
 
         event!(Level::INFO, "Connected to the server");
 
-        loop {
-            tokio::select! {
-                Some(ConnInstruction::Send(pubkey, message)) = self.rx.recv() => {
-                    if !self.connections.contains_key(&pubkey) {
-                        stream.send(RelayRequest::GetUser(pubkey)).await?;
-                        let resp = stream.next().await.unwrap().unwrap();
-                        if let RelayResponse::UserAddress(Some(addr)) = resp {
-                            event!(Level::INFO, "Trying to connect to: {addr}");
-                            self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Initiator);
-                        }
-                    }
-
-                    if self.connections.contains_key(&pubkey) {
-                        self.connections
-                            .get(&pubkey)
-                            .unwrap()
-                            .tx
-                            .send(PeerManagerCommand::Send(message))
-                            .await?;
-                    }
-
-                    //^ This needs to be done through RPCs. Currently the caller
-                    // needs to care about the return type (if let GenericEnum = ...)
-                    // Unacceptable!
-                }
-                Some(Ok(RelayResponse::AwaitConnection(pubkey, addr))) = stream.next() => {
-                    self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Responder);
-                }
-                _ = self.token.cancelled() => { break; }
-                else => { self.token.cancel(); }
-            }
-        }
-
-        Ok(())
+        Ok((endpoint, conn, stream))
     }
 
     fn register_connection(
@@ -140,14 +150,6 @@ impl ConnManager {
             self.tx.clone(),
         );
         self.connections.insert(pubkey, handle);
-    }
-
-    async fn handle_peer(
-        endpoint: Endpoint,
-        key: VerifyingKey,
-        token: CancellationToken,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        Ok(())
     }
 
     async fn upgrade_relay_connection<
@@ -192,18 +194,33 @@ impl ConnManagerHandle {
         token: CancellationToken,
     ) -> Self {
         let (command_tx, command_rx) = mpsc::channel(32);
-        let mut conn_manager = ConnManager {
-            identity,
-            relay,
-            tx: message_tx,
-            rx: command_rx,
-            token,
-            tracker: tracker.clone(),
-            connections: HashMap::new(),
-        };
 
-        tracker.spawn(async move { conn_manager.run().await.unwrap() });
+        let inner_tracker = tracker.clone();
+        tracker.spawn(async move {
+            let mut conn_manager = ConnManager {
+                identity,
+                relay,
+                tx: message_tx,
+                rx: command_rx,
+                token: token.clone(),
+                tracker: inner_tracker,
+                connections: HashMap::new(),
+            };
 
+            // Warning! ConnManager keeps its state after a crash!
+            // If this causes bugs then create a new ConnManager instance
+            // after each crash
+            loop {
+                match conn_manager.run().await {
+                    Ok(()) => break,
+                    Err(_) => {
+                        event!(Level::INFO, "Couldn't connect to the server. Retrying in 3 seconds.");
+                        sleep(Duration::from_secs(3)).await;
+                    }
+                }
+            }
+        });
+        
         Self {
             tx: command_tx,
             task_tracker: tracker.clone(),

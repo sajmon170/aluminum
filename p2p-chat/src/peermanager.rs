@@ -5,12 +5,12 @@ use libchatty::{
     utils,
 };
 
-use std::{error::Error, net::SocketAddr};
+use std::{error::Error, net::SocketAddr, time::Duration};
 
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use quinn::{Connection, ConnectionError, Endpoint};
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::sleep};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{event, Level};
 
@@ -74,10 +74,10 @@ impl PeerManager {
 
             match self.role {
                 P2pRole::Initiator => {
-                    outgoing.unwrap().open_bi().await.unwrap()
+                    outgoing?.open_bi().await?
                 }
                 P2pRole::Responder => {
-                    incoming.unwrap().accept_bi().await.unwrap()
+                    incoming?.accept_bi().await?
                 }
             }
         };
@@ -88,12 +88,14 @@ impl PeerManager {
         Ok(stream)
     }
 
-    async fn accept_peer(&self) -> Result<Connection, ConnectionError> {
+    async fn accept_peer(&self) -> Result<Connection, Box<dyn Error + Send + Sync>> {
         loop {
-            let incoming = self.endpoint.accept().await.unwrap();
+            let incoming = self.endpoint.accept().await
+                .ok_or("Peer closed the connetion prematurely.")?;
+
             if incoming.remote_address() == self.peer_addr {
                 event!(Level::DEBUG, "Accepting remote...");
-                return incoming.accept().unwrap().await;
+                return Ok(incoming.accept()?.await?);
             }
             else {
                 event!(Level::DEBUG, "Ignoring remote...");
@@ -102,17 +104,16 @@ impl PeerManager {
         }
     }
 
-    async fn connect_to_peer(&self) -> Result<Connection, ConnectionError> {
+    async fn connect_to_peer(&self) -> Result<Connection, Box<dyn Error + Send + Sync>> {
         event!(Level::DEBUG, "Connecting to peer...");
-        let result = self
+        let conn = self
             .endpoint
-            .connect(self.peer_addr, "localhost")
-            .unwrap()
-            .await;
+            .connect(self.peer_addr, "localhost")?
+            .await?;
 
         event!(Level::DEBUG, "Connected to peer!");
 
-        result
+        Ok(conn)
     }
 
     async fn upgrade_connection(
@@ -160,18 +161,30 @@ impl PeerManagerHandle {
         message_consumer: mpsc::Sender<UserMessage>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(32);
-        let mut peer_manager = PeerManager {
-            identity,
-            endpoint,
-            peer_key,
-            peer_addr,
-            token,
-            role,
-            rx,
-            tx: message_consumer,
-        };
 
-        tracker.spawn(async move { peer_manager.run().await.unwrap() });
+        // Spawns the peer manager actor hypervisor
+        tracker.spawn(async move {
+            let mut peer_manager = PeerManager {
+                identity,
+                endpoint,
+                peer_key,
+                peer_addr,
+                token: token.clone(),
+                role,
+                rx,
+                tx: message_consumer,
+            };
+
+            loop {
+                match peer_manager.run().await {
+                    Ok(()) => break,
+                    Err(_) => {
+                        event!(Level::INFO, "Couldn't connect to the peer. Retrying in 3 seconds.");
+                        sleep(Duration::from_secs(3)).await;
+                    }
+                }
+            }
+        });
 
         Self {
             tx,

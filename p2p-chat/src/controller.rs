@@ -99,6 +99,8 @@ impl<'a> AppController<'a> {
             }
         }
 
+        self.tracker.close();
+
         Ok(())
     }
 

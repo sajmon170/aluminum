@@ -13,7 +13,7 @@ rustls = { version = "0.23.12", features = ["ring"] }
 base64 = "0.22.1"
 futures = "0.3"
 libchatty = { path = "../libchatty" }
-ratatui = "0.28.0"
+ratatui = { version = "0.28.0", features = ["underline-color"] }
 tui-textarea = "0.6.1"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 chrono = "0.4.38"
@@ -33,3 +33,5 @@ enum_dispatch = "0.3.13"
 strum = "0.26.3"
 strum_macros = "0.26.4"
 tower = "0.5.1"
+enum-as-inner = "0.6.1"
+console-subscriber = "0.4.0"

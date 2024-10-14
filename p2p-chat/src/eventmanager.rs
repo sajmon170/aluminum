@@ -80,7 +80,9 @@ impl EventManagerHandle {
             token,
         };
 
-        tracker.spawn(async move { event_mgr.handle_events().await });
+        tracker.spawn(async move {
+            event_mgr.handle_events().await;
+        });
 
         EventManagerHandle { event_rx }
     }

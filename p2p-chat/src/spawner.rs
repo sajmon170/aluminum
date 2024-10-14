@@ -130,6 +130,9 @@ fn init_tracing(name: &str) -> io::Result<WorkerGuard> {
         .with_env_filter(env_filter)
         .init();
 
+    // Alternative subscriber - Tokio Console
+    // console_subscriber::init();
+
     Ok(guard)
 }
 

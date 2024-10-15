@@ -34,8 +34,12 @@ pub struct Relay {
 impl Relay {
     pub fn load(path: &Path) -> std::io::Result<Self> {
         let relay = std::fs::read_to_string(path)?;
-        // TODO: Handle this error
         Ok(toml::from_str::<Relay>(&relay).unwrap())
+    }
+
+    pub fn save(&self, path: &Path) {
+        let serialized = toml::to_string(self).unwrap();
+        fs::write(path, serialized).unwrap();
     }
 }
 

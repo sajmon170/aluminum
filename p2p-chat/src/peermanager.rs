@@ -14,6 +14,8 @@ use tokio::{sync::mpsc, time::sleep};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{event, Level};
 
+use crate::connmanager::ConnMessage;
+
 type PeerConnection = NoiseConnection<QuinnStream, PeerPacket, PeerPacket>;
 
 pub enum P2pRole {
@@ -29,7 +31,7 @@ struct PeerManager {
     token: CancellationToken,
     role: P2pRole,
     rx: mpsc::Receiver<PeerManagerCommand>,
-    tx: mpsc::Sender<UserMessage>,
+    tx: mpsc::Sender<ConnMessage>,
 }
 
 type QuinnStream = tokio::io::Join<quinn::RecvStream, quinn::SendStream>;
@@ -46,7 +48,9 @@ impl PeerManager {
                         PeerMessageData::Text(text) => text.clone()
                     };
                     event!(Level::INFO, "Received message: {text}");
-                    self.tx.send(UserMessage::new(self.peer_key, msg)).await?;
+                    self.tx.send(ConnMessage::UserMessage(
+                        UserMessage::new(self.peer_key, msg)
+                    )).await?;
                 }
                 Some(PeerManagerCommand::Send(msg)) = self.rx.recv() => {
                     let text = match &msg {
@@ -158,7 +162,7 @@ impl PeerManagerHandle {
         token: CancellationToken,
         role: P2pRole,
         tracker: TaskTracker,
-        message_consumer: mpsc::Sender<UserMessage>,
+        message_consumer: mpsc::Sender<ConnMessage>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(32);
 

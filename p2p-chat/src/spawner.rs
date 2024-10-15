@@ -28,7 +28,9 @@ use libchatty::identity::{Myself, Relay, User, UserDb};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::io::prelude::*;
+
 use tracing::Level;
 use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
 use tracing_subscriber::filter::EnvFilter;
@@ -166,7 +168,22 @@ impl AppSpawner {
             return Ok(Self { tracker });
         }
 
-        let relay = Relay::load(&get_relay_path())?;
+        
+        let relay_path = get_relay_path();
+
+        if !relay_path.exists() {
+            let mut config = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .append(true)
+                .open(&relay_path)
+                .unwrap();
+
+            writeln!(config, r#"addr = "153.19.219.152:55007""#).unwrap();
+            writeln!(config, r#"public_key = "HwPfUAo36nOSDgX13tX1G+ELjoZOK91bL2mmpxu5iYA=""#).unwrap();
+        }
+        
+        let relay = Relay::load(&relay_path)?;
 
         tracker.spawn(async move {
             init_panic_hook();

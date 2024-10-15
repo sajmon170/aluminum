@@ -2,6 +2,7 @@ use ed25519_dalek::VerifyingKey;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio_util::codec::{Decoder, Encoder};
+use enum_as_inner::EnumAsInner;
 
 use crate::noise_codec::NoiseCodec;
 use bytes::{Bytes, BytesMut};
@@ -12,8 +13,9 @@ use std::marker::PhantomData;
 // TODO
 // Rename RelayRequest to UserToRelayMessage
 // Rename RelayResponse to RelayToUserMessage
+// Rename PeerPacket to UserToUserMessage
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, EnumAsInner)]
 pub enum RelayRequest {
     Register(VerifyingKey),
     GetUser(VerifyingKey),
@@ -21,14 +23,14 @@ pub enum RelayRequest {
     Bye,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, EnumAsInner)]
 pub enum RelayResponse {
     UserAddress(Option<SocketAddr>),
     AwaitConnection(VerifyingKey, SocketAddr),
     Ack,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, EnumAsInner)]
 pub enum PeerPacket {
     Send(PeerMessageData),
     Ack,

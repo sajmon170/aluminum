@@ -11,11 +11,10 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
-    connmanager::{ConnInstruction, ConnManagerHandle},
+    connmanager::{ConnInstruction, ConnManagerHandle, ConnMessage},
     eventmanager::{AppEvent, EventManagerHandle},
     messageview::MessageViewAction,
-    friendsview::FriendsViewAction,
-    tui::Tui,
+    tui::{Tui, TuiAction},
 };
 
 use libchatty::{
@@ -27,14 +26,15 @@ use tracing::{event, Level};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
-use crate::tui::TuiAction;
-
 pub enum AppAction {
     Quit,
     Redraw,
     TuiAction(TuiAction),
     ReceiveMessage(UserMessage),
     SendMessage(PeerMessageData, VerifyingKey),
+    SetOffline,
+    SetConnecting,
+    SetConnected,
 }
 
 pub struct AppController<'a> {
@@ -110,8 +110,10 @@ impl<'a> AppController<'a> {
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
             AppEvent::ReceiveMessage(msg) => {
                 Some(AppAction::ReceiveMessage(msg))
-            }
-            _ => None,
+            },
+            AppEvent::SetConnected => Some(AppAction::SetConnected),
+            AppEvent::SetConnecting => Some(AppAction::SetConnecting),
+            AppEvent::SetOffline => Some(AppAction::SetOffline)
         }
     }
 
@@ -177,6 +179,15 @@ impl<'a> AppController<'a> {
             }
             AppAction::SendMessage(msg_data, pubkey) => {
                 let _ = self.send_message(msg_data, pubkey).await;
+            }
+            AppAction::SetConnected => {
+                self.tui.set_connected();
+            }
+            AppAction::SetConnecting => {
+                self.tui.set_connecting();
+            }
+            AppAction::SetOffline => {
+                self.tui.set_offline();
             }
         };
 

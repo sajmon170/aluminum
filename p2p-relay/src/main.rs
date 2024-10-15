@@ -20,7 +20,7 @@ use clap::Parser;
 
 use base64::prelude::*;
 
-use quinn::{ClientConfig, Endpoint, ServerConfig};
+use quinn::{ClientConfig, Endpoint, Incoming, ServerConfig};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 
 // TODO - move this into a sseparate library
@@ -68,15 +68,16 @@ type ConnectionDb = HashMap<VerifyingKey, SocketAddr>;
 type NotifyDb = HashMap<SocketAddr, mpsc::Sender<Notify>>;
 
 async fn process(
-    conn: Connection,
+    conn: Incoming,
     db: Arc<Mutex<UserDb>>,
     conn_db: Arc<Mutex<ConnectionDb>>,
     notify_db: Arc<Mutex<NotifyDb>>,
     mut notify_rx: mpsc::Receiver<Notify>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let addr = conn.remote_address();
+    let conn = conn.await?;
 
-    let (writer, reader) = conn.accept_bi().await.unwrap();
+    let (writer, reader) = conn.accept_bi().await?;
     let stream = tokio::io::join(reader, writer);
 
     let keys = {
@@ -220,11 +221,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let serverdb = Arc::new(Mutex::new(serverdb));
 
-    let addr: SocketAddr = "127.0.0.1:50007".parse().unwrap();
+    let addr: SocketAddr = "0.0.0.0:55007".parse().unwrap();
     let (endpoint, _server_cert) = make_server_endpoint(addr).unwrap();
 
-    loop {
-        let conn = endpoint.accept().await.unwrap().await.unwrap();
+    while let Some(conn) = endpoint.accept().await {
         let addr = conn.remote_address();
         let (tx, rx) = mpsc::channel(32);
         let _guard = {
@@ -233,7 +233,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         };
         event!(
             Level::INFO,
-            "Opened a new connection from {}",
+            "Handling a new connection from {}",
             conn.remote_address()
         );
         tokio::spawn(process(
@@ -243,7 +243,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             notifydb.clone(),
             rx,
         ));
-    }
+    };
+
+    Ok(())
 }
 
 fn init_tracing() -> Result<WorkerGuard> {

@@ -9,6 +9,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use ratatui::crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers};
 
+use crate::connmanager::ConnMessage;
+
 #[derive(Debug)]
 pub struct PressedKey {
     pub code: KeyCode,
@@ -24,6 +26,9 @@ impl From<PressedKey> for KeyEvent {
 #[derive(Debug)]
 pub enum AppEvent {
     ReceiveMessage(UserMessage),
+    SetOffline,
+    SetConnecting,
+    SetConnected,
     FrameTick,
     KeyPress(PressedKey),
 }
@@ -31,7 +36,7 @@ pub enum AppEvent {
 #[derive(Debug)]
 struct EventManager {
     event_tx: mpsc::Sender<AppEvent>,
-    msg_rx: mpsc::Receiver<UserMessage>,
+    msg_rx: mpsc::Receiver<ConnMessage>,
     token: CancellationToken,
 }
 
@@ -46,7 +51,14 @@ impl EventManager {
                     self.event_tx.send(AppEvent::FrameTick).await.unwrap();
                 },
                 Some(msg) = self.msg_rx.recv() => {
-                    self.event_tx.send(AppEvent::ReceiveMessage(msg)).await.unwrap();
+                    let event = match msg {
+                        ConnMessage::UserMessage(msg) => AppEvent::ReceiveMessage(msg),
+                        ConnMessage::ServerOffline => AppEvent::SetOffline,
+                        ConnMessage::Connecting => AppEvent::SetConnecting,
+                        ConnMessage::Connected => AppEvent::SetConnected
+                    };
+
+                    self.event_tx.send(event).await.unwrap();
                 }
                 Some(event) = event_stream.next() => {
                     if let Ok(event::Event::Key(key)) = event {
@@ -69,7 +81,7 @@ pub struct EventManagerHandle {
 
 impl EventManagerHandle {
     pub fn new(
-        msg_rx: mpsc::Receiver<UserMessage>,
+        msg_rx: mpsc::Receiver<ConnMessage>,
         tracker: &TaskTracker,
         token: CancellationToken,
     ) -> EventManagerHandle {

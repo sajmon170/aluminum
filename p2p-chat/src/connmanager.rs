@@ -30,11 +30,18 @@ type QuicRelayConn = RelayConnection<Join<RecvStream, SendStream>>;
 struct ConnManager {
     identity: Myself,
     relay: Relay,
-    tx: mpsc::Sender<UserMessage>,
+    tx: mpsc::Sender<ConnMessage>,
     rx: mpsc::Receiver<ConnInstruction>,
     token: CancellationToken,
     tracker: TaskTracker,
     connections: HashMap<VerifyingKey, PeerManagerHandle>,
+}
+
+pub enum ConnMessage {
+    UserMessage(UserMessage),
+    ServerOffline,
+    Connecting,
+    Connected
 }
 
 fn make_server_endpoint(
@@ -79,6 +86,7 @@ impl ConnManager {
                         .await?;
                 }
                 Some(Ok(RelayResponse::AwaitConnection(pubkey, addr))) = stream.next() => {
+                    event!(Level::INFO, "Someone wants to connect: {addr}");
                     self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Responder);
                 }
                 _ = self.token.cancelled() => { break }
@@ -96,15 +104,11 @@ impl ConnManager {
         Box<dyn Error + Send + Sync>,
     > {
         event!(Level::DEBUG, "Configuring self");
-        let bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
         let (mut endpoint, _server_cert) =
             make_server_endpoint(bind_addr).unwrap();
 
-        // TODO: get server address from config
-        let server_addr = SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(127, 0, 0, 1),
-            50007,
-        ));
+        let server_addr = self.relay.addr;
 
         endpoint.set_default_client_config(
             libchatty::quinn_session::configure_client(),
@@ -128,6 +132,7 @@ impl ConnManager {
         let _ack = stream.next().await;
 
         event!(Level::INFO, "Connected to the server");
+        let _ = self.tx.send(ConnMessage::Connected).await;
 
         Ok((endpoint, conn, stream))
     }
@@ -187,7 +192,7 @@ pub struct ConnManagerHandle {
 
 impl ConnManagerHandle {
     pub fn new(
-        message_tx: mpsc::Sender<UserMessage>,
+        message_tx: mpsc::Sender<ConnMessage>,
         identity: Myself,
         relay: Relay,
         tracker: &TaskTracker,
@@ -200,7 +205,7 @@ impl ConnManagerHandle {
             let mut conn_manager = ConnManager {
                 identity,
                 relay,
-                tx: message_tx,
+                tx: message_tx.clone(),
                 rx: command_rx,
                 token: token.clone(),
                 tracker: inner_tracker,
@@ -211,12 +216,15 @@ impl ConnManagerHandle {
             // If this causes bugs then create a new ConnManager instance
             // after each crash
             loop {
-                match conn_manager.run().await {
-                    Ok(()) => break,
-                    Err(_) => {
+                tokio::select! {
+                    Err(_) = conn_manager.run() => {
                         event!(Level::INFO, "Couldn't connect to the server. Retrying in 3 seconds.");
+                        let _ = message_tx.send(ConnMessage::ServerOffline).await;
                         sleep(Duration::from_secs(3)).await;
+                        let _ = message_tx.send(ConnMessage::Connecting).await;
                     }
+                    _ = token.cancelled() => { break }
+                    else => { token.cancel() }
                 }
             }
         });

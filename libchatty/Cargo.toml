@@ -25,3 +25,4 @@ rustls = { version = "0.23.12", features = ["ring"] }
 rcgen = "0.13.1"
 tracing = "0.1.40"
 chrono = { version = "0.4.38", features = ["serde"] }
+enum-as-inner = "0.6.1"

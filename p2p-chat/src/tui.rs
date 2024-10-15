@@ -97,6 +97,18 @@ impl<'a> Tui<'a> {
         }
     }
 
+    pub fn set_connecting(&mut self) {
+        self.conn_status = ConnectionStatus::Connecting;
+    }
+
+    pub fn set_connected(&mut self) {
+        self.conn_status = ConnectionStatus::Connected;
+    }
+
+    pub fn set_offline(&mut self) {
+        self.conn_status = ConnectionStatus::Offline;
+    }
+
     pub fn draw(&mut self, terminal: &mut Term) -> io::Result<()> {
         terminal.draw(|frame| {
             let [top, content] = Layout::default()

@@ -4,6 +4,7 @@ use std::{
     rc::Rc,
 };
 
+use layout::Size;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -11,6 +12,7 @@ use ratatui::{
 };
 
 use tui_textarea::TextArea;
+use tui_scrollview::*;
 
 use crate::component::Component;
 use crate::eventmanager::PressedKey;
@@ -18,102 +20,139 @@ use crate::message::DisplayMessage;
 
 #[derive(Debug)]
 pub struct MessageView<'a> {
-    scroll_pos: u16,
-    max_scroll: u16,
     textarea: TextArea<'a>,
-    messages: Vec<String>,
+    messages: Vec<DisplayMessage>,
+    scroll_state: ScrollViewState,
+    // ScrollView needs to be initialized with data
+    // before applying PageUp/PageDown scroll.
+    init_scroll: bool
 }
-
-// TODO
-// - either replace textwrap with .wrap()
-// OR
-// - use textwrap as normal but print the formatted name first,
-//   then print the wrapped text with the name characters skipped.
-//
-// Add a color field to the DisplayMessage struct
-// OR - add a style type field.
-// available styles: Recipient, Responder
 
 impl<'a> Widget for &mut MessageView<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let layout = Layout::default()
+        let [message_log, text_input] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
-            .split(area);
+            .areas(area);
 
-        let items = MessageView::get_lines(&layout, &self.messages);
+        let width = message_log.width - 1;
 
-        self.max_scroll = items.len() as u16 - layout[0].height;
-        if self.scroll_pos > self.max_scroll {
-            self.scroll_pos = self.max_scroll;
+        let paragraphs: Vec<(Paragraph, u16)> = self.messages.iter()
+            .map(|msg| MessageView::make_paragraph(msg, width))
+            .collect();
+
+        let total_height = paragraphs.iter()
+            .fold(0, |sum, (_, height)| sum + height);
+
+        let mut scroll_view = ScrollView::new(Size::new(width, total_height));
+
+        let mut starting_height = 0;
+        for (paragraph, widget_height) in &paragraphs {
+            let area = Rect::new(0, starting_height, width, *widget_height);
+            scroll_view.render_widget(paragraph, area);
+            starting_height += widget_height;
         }
 
-        Paragraph::new(Text::from(items))
-            .scroll((self.max_scroll - self.scroll_pos, 0))
-            .render(layout[0], buf);
+        let message_log = if total_height < message_log.height {
+            Rect {
+                y: message_log.height - total_height + 2,
+                ..message_log
+            }
+        }
+        else {
+            Rect {
+                height: message_log.height,
+                ..message_log
+            }
+        };
 
-        Widget::render(&self.textarea, layout[1], buf);
+        if self.init_scroll == true {
+            StatefulWidget::render(scroll_view.clone(), message_log, buf, &mut self.scroll_state);
+            self.reset_scroll();
+            self.scroll_state.scroll_up();
+            self.init_scroll = false;
+        }
+
+        StatefulWidget::render(scroll_view, message_log, buf, &mut self.scroll_state);
+        
+        Widget::render(&self.textarea, text_input, buf);
     }
 }
+
 
 // TODO:
 // - load messages in a better way
 impl<'a> MessageView<'a> {
-    pub fn new(messages: Vec<String>) -> Self {
+    pub fn new(messages: Vec<DisplayMessage>) -> Self {
         let mut textarea = TextArea::default();
         textarea.set_block(Block::bordered());
         textarea.set_cursor_line_style(Style::default());
 
         Self {
-            scroll_pos: 0,
-            max_scroll: 0,
             textarea,
             messages,
+            scroll_state: ScrollViewState::new(),
+            init_scroll: true
         }
     }
 
-    // TODO - Convert this to iterators (i.e. - remove the VecDeque allocation)
-    fn get_lines<'b>(
-        layout: &Rc<[Rect]>,
-        messages: &'b Vec<String>,
-    ) -> Vec<Line<'b>> {
-        let mut lines: VecDeque<Line> = messages
+    fn make_paragraph(msg: &DisplayMessage, width: u16) -> (Paragraph, u16) {
+        let name_spans = vec![
+            Span::styled(msg.get_time(), Style::default().fg(Color::DarkGray)),
+            Span::from(" "),
+            Span::styled(
+                &msg.author,
+                Style::default().fg(msg.get_message_color()).bold(),
+            ),
+            Span::from(">"),
+        ];
+
+        let name_str = name_spans
             .iter()
-            .zip(0..messages.len())
-            .map(|(msg, idx)| {
-                textwrap::wrap(msg, layout[0].width as usize)
-                    .into_iter()
-                    .map(|s| Line::raw(s))
-            })
-            .flatten()
+            .fold(String::new(), |total, span| total + span.content.as_ref());
+
+        let msg_str = format!("{} {}", name_str, msg.content);
+
+        let wrapped: Vec<String> = textwrap::wrap(&msg_str, width as usize)
+            .into_iter()
+            .map(|x| x.to_string())
             .collect();
 
-        while (lines.len() as u16) < layout[0].height {
-            lines.push_front(Line::from(""));
-        }
+        let height = wrapped.len() as u16;
 
-        lines.into()
+        let mut wrapped = wrapped.into_iter();
+
+        let first_line = wrapped.next().unwrap()[name_str.len()..].to_owned();
+
+        let lines = std::iter::once(Line::from_iter(
+            name_spans.into_iter().chain(std::iter::once(Span::raw(
+                first_line
+            ))),
+        ))
+        .chain(wrapped.map(|x| Line::from(x)));
+
+        let paragraph = Paragraph::new(Text::from_iter(lines));
+
+        (paragraph, height)
     }
 
     pub fn append(&mut self, msg: DisplayMessage) {
-        self.messages.push(msg.to_string());
+        self.messages.push(msg);
         self.reset_scroll();
     }
 
     pub fn reset_scroll(&mut self) {
-        self.scroll_pos = 0;
+        self.scroll_state.scroll_to_bottom();
+        self.scroll_state.scroll_page_up();
+        self.scroll_state.scroll_down();
     }
 
     pub fn scroll_down(&mut self) {
-        if self.scroll_pos > 0 {
-            self.scroll_pos = self.scroll_pos - 1;
-        }
+        self.scroll_state.scroll_down();
     }
 
     pub fn scroll_up(&mut self) {
-        if self.scroll_pos < self.max_scroll as u16 {
-            self.scroll_pos = self.scroll_pos + 1;
-        }
+        self.scroll_state.scroll_up();
     }
 
     pub fn write_key(&mut self, key: PressedKey) {
@@ -123,8 +162,7 @@ impl<'a> MessageView<'a> {
     pub fn extract_msg(&mut self) -> Option<String> {
         if self.textarea.is_empty() {
             None
-        }
-        else {
+        } else {
             self.textarea.delete_line_by_head();
             Some(self.textarea.yank_text())
         }
@@ -154,15 +192,12 @@ impl<'a> Component for MessageView<'a> {
     fn handle_kbd_event(&mut self, key: PressedKey) -> Option<Self::Action> {
         if key.code == KeyCode::Down {
             Some(Self::Action::ScrollDown)
-        }
-        else if key.code == KeyCode::Up {
+        } else if key.code == KeyCode::Up {
             Some(Self::Action::ScrollUp)
-        }
-        else if key.code == KeyCode::Enter {
+        } else if key.code == KeyCode::Enter {
             self.extract_msg()
                 .map_or(None, |msg| Some(Self::Action::SendMsg(msg)))
-        }
-        else {
+        } else {
             Some(Self::Action::WriteKey(key))
         }
     }

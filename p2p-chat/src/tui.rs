@@ -1,7 +1,7 @@
 use crate::component::Component;
 use crate::eventmanager::PressedKey;
 use crate::friendsview::{DisplayUser, FriendsView, FriendsViewAction};
-use crate::message::DisplayMessage;
+use crate::message::{DisplayMessage, MessageStyle};
 use crate::messageview::{MessageView, MessageViewAction};
 use ed25519_dalek::VerifyingKey;
 use libchatty::identity::UserDb;
@@ -26,9 +26,6 @@ pub struct Tui<'a> {
     db: Arc<Mutex<UserDb>>,
     conn_status: ConnectionStatus
 }
-
-// TODO - port this to an actor architecture
-// Main problem - how do we pass the terminal here?
 
 use crate::controller::AppAction;
 
@@ -264,10 +261,14 @@ impl<'a> Tui<'a> {
                     PeerMessageData::Text(text) => text,
                 };
 
+                let style = if msg.author == to { MessageStyle::Responder }
+                else { MessageStyle::Sender };
+
                 let message = DisplayMessage {
                     content: text.clone(),
                     author: user_meta.nickname,
                     timestamp: msg.timestamp,
+                    style
                 };
 
                 self.message_view.append(message);

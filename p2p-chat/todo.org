@@ -51,16 +51,24 @@ Good luck, keep yourself hydrated with monster energy...
   - [ ] Loading friends into database
   - [X] Selecting friends
   - [ ] Message notifications
+  - [X] Prettify tabs
+- [ ] Extended messages
+  - [ ] Architecture
+    - [ ] replace the paragraph with a bottom-to-top list 
+    - [ ] wrap the list inside a ScrollView
+    - [ ] create a structured GenericMessage/ListItem struct
   - [ ] Add colors to name handles
   - [ ] Gray out the time
-  - [ ] Prettify tabs
+  - [ ] Each message in the database gets a sent/unsent status
+  
 - [X] Load message history for each peer
 - [ ] Implement the database as a vector of Arc values
-- [ ] Handle connection errors
-  - [ ] Add a "connected" status bar to UI instead of panicking
-  - [ ] Fix crashing when sending a message to an offline host
-- [ ] Make the register() RPC safe
-  - [ ] Compare the received Ed25519 key to the the X25519 Noise handshake key returned from the handshake function
+- [X] Handle connection errors
+  - [X] Add a "connected" status bar to UI instead of panicking
+  - [X] Fix crashing when sending a message to an offline host
+  - [X] Fix crashing when the server is not online
+- [X] Make the register() RPC safe
+  - [X] Compare the received Ed25519 key to the the X25519 Noise handshake key returned from the handshake function
 - [ ] Replace the event management framework with callbacks
 - [ ] Implement RPCs with Tower Services
 - [ ] Streamline the Result return type (reduce dynamic dispatch)

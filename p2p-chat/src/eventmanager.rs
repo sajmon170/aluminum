@@ -48,7 +48,7 @@ impl EventManager {
         loop {
             tokio::select! {
                 _ = framerate.tick() => {
-                    self.event_tx.send(AppEvent::FrameTick).await.unwrap();
+                    let _ = self.event_tx.send(AppEvent::FrameTick).await;
                 },
                 Some(msg) = self.msg_rx.recv() => {
                     let event = match msg {

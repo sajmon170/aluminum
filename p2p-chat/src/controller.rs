@@ -5,16 +5,16 @@ use std::{
 
 use ed25519_dalek::VerifyingKey;
 use tokio::sync::mpsc;
-
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
-
 use ratatui::{backend::CrosstermBackend, Terminal};
+use std::mem;
 
 use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle, ConnMessage},
     eventmanager::{AppEvent, EventManagerHandle},
     messageview::MessageViewAction,
     tui::{Tui, TuiAction},
+    action::AppAction
 };
 
 use libchatty::{
@@ -25,17 +25,6 @@ use libchatty::{
 use tracing::{event, Level};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
-
-pub enum AppAction {
-    Quit,
-    Redraw,
-    TuiAction(TuiAction),
-    ReceiveMessage(UserMessage),
-    SendMessage(PeerMessageData, VerifyingKey),
-    SetOffline,
-    SetConnecting,
-    SetConnected,
-}
 
 pub struct AppController<'a> {
     terminal: &'a mut Term,
@@ -90,9 +79,13 @@ impl<'a> AppController<'a> {
         loop {
             tokio::select! {
                 Some(event) = self.event_manager.event_rx.recv() => {
-                    if let Some(action) = self.handle_event(event) {
-                        self.execute(action).await?;
+                    if let Some(mut action) = self.handle_event(event) {
+                        while let Some(next_action) = self.execute(action).await? {
+                            action = next_action;
+                        }
+                        
                     }
+                    
                 },
                 _ = self.token.cancelled() => { break; },
                 else => { self.token.cancel() }
@@ -128,6 +121,10 @@ impl<'a> AppController<'a> {
         log.push(msg);
     }
 
+    fn parse_cmd(&self, cmd: &str) -> io::Result<Option<AppAction>> {
+        Ok(None)
+    }
+
     async fn send_message(
         &mut self,
         msg: PeerMessageData,
@@ -152,45 +149,55 @@ impl<'a> AppController<'a> {
         Ok(())
     }
 
-    async fn execute(&mut self, action: AppAction) -> io::Result<()> {
-        match action {
+    async fn execute(&mut self, action: AppAction) -> io::Result<Option<AppAction>> {
+        let result = match action {
             AppAction::Quit => {
                 self.token.cancel();
                 self.tracker.close();
+                None
             }
             AppAction::Redraw => {
                 self.tui.draw(self.terminal)?;
+                None
             }
             AppAction::TuiAction(action) => {
-                match action {
-                    TuiAction::MessageViewAction(
-                        MessageViewAction::SendMsg(msg),
-                    ) => {
-                        let data = PeerMessageData::Text(msg);
-                        self.send_message(data, self.tui.get_current_user())
-                            .await?;
-                        //self.execute(AppAction::SendMessage(data, self.tui.get_current_user())).await?;
-                    }
-                    _ => self.tui.react(action)?,
-                };
+                self.tui.react(action)?
+            }
+            AppAction::SelectUser(user) => {
+                self.tui.select_user(user);
+                None
             }
             AppAction::ReceiveMessage(msg) => {
                 self.receive_message(msg);
+                None
             }
-            AppAction::SendMessage(msg_data, pubkey) => {
-                let _ = self.send_message(msg_data, pubkey).await;
+            AppAction::ParseCommand(cmd) => {
+                if cmd.chars().nth(0).unwrap() != '/' {
+                    let msg_data = PeerMessageData::Text(cmd);
+                    Some(AppAction::SendTextMessage(msg_data, self.tui.get_current_user()))
+                }
+                else {
+                    self.parse_cmd(&cmd[1..])?
+                }
+            }
+            AppAction::SendTextMessage(msg_data, pubkey) => {
+                self.send_message(msg_data, pubkey).await?;
+                None
             }
             AppAction::SetConnected => {
                 self.tui.set_connected();
+                None
             }
             AppAction::SetConnecting => {
                 self.tui.set_connecting();
+                None
             }
             AppAction::SetOffline => {
                 self.tui.set_offline();
+                None
             }
         };
 
-        Ok(())
+        Ok(result)
     }
 }

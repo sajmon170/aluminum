@@ -1,4 +1,5 @@
 mod component;
+mod action;
 mod connmanager;
 mod controller;
 mod eventmanager;

@@ -14,23 +14,26 @@ use ratatui::{
 use tui_textarea::TextArea;
 use tui_scrollview::*;
 
-use crate::component::Component;
-use crate::eventmanager::PressedKey;
-use crate::message::DisplayMessage;
+use crate::{
+    component::Component,
+    action,
+    eventmanager::PressedKey,
+    message::DisplayMessage
+};
 
 #[derive(Debug)]
 pub struct MessageView<'a> {
     textarea: TextArea<'a>,
     messages: Vec<DisplayMessage>,
     scroll_state: ScrollViewState,
-    // ScrollView needs to be initialized with data
-    // before applying PageUp/PageDown scroll.
+    // This flag means that the ScrollView needs to be initialized with data
+    // before applying a PageUp/PageDown scroll.
     init_scroll: bool
 }
 
 impl<'a> Widget for &mut MessageView<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let [message_log, text_input] = Layout::default()
+        let [mut message_log, text_input] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
             .areas(area);
@@ -53,18 +56,12 @@ impl<'a> Widget for &mut MessageView<'a> {
             starting_height += widget_height;
         }
 
-        let message_log = if total_height < message_log.height {
-            Rect {
+        if total_height < message_log.height {
+            message_log = Rect {
                 y: message_log.height - total_height + 2,
                 ..message_log
-            }
+            };
         }
-        else {
-            Rect {
-                height: message_log.height,
-                ..message_log
-            }
-        };
 
         if self.init_scroll == true {
             StatefulWidget::render(scroll_view.clone(), message_log, buf, &mut self.scroll_state);
@@ -159,7 +156,7 @@ impl<'a> MessageView<'a> {
         self.textarea.input(KeyEvent::from(key));
     }
 
-    pub fn extract_msg(&mut self) -> Option<String> {
+    pub fn extract_input(&mut self) -> Option<String> {
         if self.textarea.is_empty() {
             None
         } else {
@@ -173,17 +170,26 @@ impl<'a> MessageView<'a> {
     }
 }
 
+// TODO: replace SendMsg with TextInput
+// TODO: Return multiple AppActions from TextInput
+// -> SendTextMessage
+// -> SendImage
+
+// TODO - implement multiple AppActions that can stem from TextInput
+// but all of them will send data in a unified way to the EventManager
+
 #[derive(Debug)]
 pub enum MessageViewAction {
     ScrollUp,
     ScrollDown,
     //ReceiveMsg(String),
-    SendMsg(String),
+    TextInput(String),
     WriteKey(PressedKey),
 }
 
 impl<'a> Component for MessageView<'a> {
     type Action = MessageViewAction;
+    type AppAction = action::AppAction;
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_widget(self, area);
@@ -195,20 +201,30 @@ impl<'a> Component for MessageView<'a> {
         } else if key.code == KeyCode::Up {
             Some(Self::Action::ScrollUp)
         } else if key.code == KeyCode::Enter {
-            self.extract_msg()
-                .map_or(None, |msg| Some(Self::Action::SendMsg(msg)))
+            self.extract_input()
+                .map_or(None, |input| Some(Self::Action::TextInput(input)))
         } else {
             Some(Self::Action::WriteKey(key))
         }
     }
 
-    fn react(&mut self, action: Self::Action) -> io::Result<()> {
-        match action {
-            Self::Action::ScrollUp => self.scroll_up(),
-            Self::Action::ScrollDown => self.scroll_down(),
-            Self::Action::WriteKey(key) => self.write_key(key),
-            _ => {}
-        }
-        Ok(())
+    fn react(&mut self, action: Self::Action) -> io::Result<Option<Self::AppAction>> {
+        let result = match action {
+            Self::Action::ScrollUp => {
+                self.scroll_up();
+                None
+            },
+            Self::Action::ScrollDown => {
+                self.scroll_down();
+                None
+            },
+            Self::Action::WriteKey(key) => {
+                self.write_key(key);
+                None
+            }
+            Self::Action::TextInput(input) => Some(Self::AppAction::ParseCommand(input))
+        };
+
+        Ok(result)
     }
 }

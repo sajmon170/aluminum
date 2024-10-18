@@ -8,6 +8,7 @@ use ratatui::{
 };
 
 use crate::component::Component;
+use crate::action;
 use crate::eventmanager::PressedKey;
 
 use base64::prelude::*;
@@ -82,6 +83,7 @@ pub enum FriendsViewAction {
 
 impl Component for FriendsView {
     type Action = FriendsViewAction;
+    type AppAction = action::AppAction;
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_widget(self, area);
@@ -94,7 +96,7 @@ impl Component for FriendsView {
         else if key.code == KeyCode::Up {
             Some(Self::Action::SelectPrev)
         }
-        else if key.code == KeyCode::Enter {
+        else if key.code == KeyCode::Enter && !self.users.is_empty() {
             Some(Self::Action::SelectCurrentUser)
         }
         else {
@@ -102,13 +104,23 @@ impl Component for FriendsView {
         }
     }
 
-    fn react(&mut self, action: Self::Action) -> io::Result<()> {
-        match action {
-            Self::Action::SelectNext => self.state.select_next(),
-            Self::Action::SelectPrev => self.state.select_previous(),
-            Self::Action::SelectCurrentUser => self.select_current_user(),
-        }
+    fn react(&mut self, action: Self::Action) -> io::Result<Option<Self::AppAction>> {
+        let result = match action {
+            Self::Action::SelectNext => {
+                self.state.select_next();
+                None
+            },
+            Self::Action::SelectPrev => {
+                self.state.select_previous();
+                None
+            },
+            Self::Action::SelectCurrentUser => {
+                self.select_current_user();
+                let selected = self.get_selected_user().unwrap();
+                Some(Self::AppAction::SelectUser(selected))
+            }
+        };
 
-        Ok(())
+        Ok(result)
     }
 }

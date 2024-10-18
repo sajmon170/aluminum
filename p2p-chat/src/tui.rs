@@ -1,4 +1,5 @@
 use crate::component::Component;
+use crate::action::AppAction;
 use crate::eventmanager::PressedKey;
 use crate::friendsview::{DisplayUser, FriendsView, FriendsViewAction};
 use crate::message::{DisplayMessage, MessageStyle};
@@ -26,8 +27,6 @@ pub struct Tui<'a> {
     db: Arc<Mutex<UserDb>>,
     conn_status: ConnectionStatus
 }
-
-use crate::controller::AppAction;
 
 #[derive(Copy, Clone, Display, EnumIter, FromRepr, EnumCountMacro)]
 enum SelectedTab {
@@ -167,9 +166,6 @@ impl<'a> Tui<'a> {
     }
 
     pub fn handle_kbd_event(&mut self, key: PressedKey) -> Option<AppAction> {
-        // TODO - pick an event handler based on active tab
-        //      - Streamline the AppAction type - either combine all into one type
-        //        or match based on currently selected
         if key.code == KeyCode::Char('q')
             && key.modifiers == KeyModifiers::CONTROL
         {
@@ -198,33 +194,27 @@ impl<'a> Tui<'a> {
         }
     }
 
-    pub fn react(&mut self, action: TuiAction) -> io::Result<()> {
-        match action {
-            TuiAction::Quit => {}
-            TuiAction::SwitchTab => self.next_tab(),
-            // TODO - fix this architecture - the action should be handled in a
-            // single place, NOT in two!
+    pub fn react(&mut self, action: TuiAction) -> io::Result<Option<AppAction>> {
+        let result = match action {
+            TuiAction::SwitchTab => {
+                self.next_tab();
+                None
+            },
             TuiAction::MessageViewAction(action) => {
                 self.message_view.react(action)?
             }
             TuiAction::FriendsViewAction(action) => {
-                match action {
-                    FriendsViewAction::SelectCurrentUser => {
-                        self.friends_view.react(action)?;
-                        if let Some(key) = self.friends_view.get_selected_user() {
-                            self.message_view.clear();
-                            self.load_messages(key);
-                            self.select_tab(SelectedTab::Messages);
-                        }
-                    }
-                    _ => {
-                        self.friends_view.react(action)?;
-                    }
-                }
+                self.friends_view.react(action)?
             }
-        }
+        };
 
-        Ok(())
+        Ok(result)
+    }
+
+    pub fn select_user(&mut self, user: VerifyingKey) {
+        self.message_view.clear();
+        self.load_messages(user);
+        self.select_tab(SelectedTab::Messages);
     }
 
     pub fn next_tab(&mut self) {
@@ -278,7 +268,6 @@ impl<'a> Tui<'a> {
 }
 
 pub enum TuiAction {
-    Quit,
     SwitchTab,
     MessageViewAction(MessageViewAction),
     FriendsViewAction(FriendsViewAction),

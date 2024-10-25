@@ -1,18 +1,17 @@
 use std::{
-    io::{self, Stdout},
-    sync::{Arc, Mutex},
+    io::{self, Stdout}, path::PathBuf, sync::{Arc, Mutex}
 };
 
 use ed25519_dalek::VerifyingKey;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, fs::File};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::mem;
 
 use crate::{
     connmanager::{ConnInstruction, ConnManagerHandle, ConnMessage},
     eventmanager::{AppEvent, EventManagerHandle},
     messageview::MessageViewAction,
+    messagerepl::{Cli, Command, Parser},
     tui::{Tui, TuiAction},
     action::AppAction
 };
@@ -23,6 +22,8 @@ use libchatty::{
 };
 
 use tracing::{event, Level};
+
+use color_eyre::Result;
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
@@ -75,7 +76,7 @@ impl<'a> AppController<'a> {
         }
     }
 
-    pub async fn run(&mut self) -> io::Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
                 Some(event) = self.event_manager.event_rx.recv() => {
@@ -121,15 +122,34 @@ impl<'a> AppController<'a> {
         log.push(msg);
     }
 
-    fn parse_cmd(&self, cmd: &str) -> io::Result<Option<AppAction>> {
+    async fn parse_cmd(&mut self, cmd: &str) -> Result<Option<AppAction>> {
+        let args = shlex::split(cmd).ok_or(eyre::Report::msg("error: Invalid quoting"))?;
+        let cli = Cli::try_parse_from(args).map_err(eyre::Report::msg)?;
+
+        // This should return an AppAction
+        match cli.command {
+            Command::Img { path } => self.send_image(path).await?,
+            Command::File { path } => self.send_file(path).await?
+        };
+        
         Ok(None)
+    }
+
+    async fn send_image(&mut self, path: PathBuf) -> Result<()> {
+        Ok(())
+    }
+
+    async fn send_file(&mut self, path: PathBuf) -> Result<()> {
+        let file = File::open(path).await?;
+        //self.conn_manager.tx.send(ConnInstruction::TransferFile((), ()));
+        Ok(())
     }
 
     async fn send_message(
         &mut self,
         msg: PeerMessageData,
         to: VerifyingKey,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let identity = {
             let db = self.db.lock().unwrap();
             db.myself.clone()
@@ -149,7 +169,7 @@ impl<'a> AppController<'a> {
         Ok(())
     }
 
-    async fn execute(&mut self, action: AppAction) -> io::Result<Option<AppAction>> {
+    async fn execute(&mut self, action: AppAction) -> Result<Option<AppAction>> {
         let result = match action {
             AppAction::Quit => {
                 self.token.cancel();
@@ -173,15 +193,27 @@ impl<'a> AppController<'a> {
             }
             AppAction::ParseCommand(cmd) => {
                 if cmd.chars().nth(0).unwrap() != '/' {
-                    let msg_data = PeerMessageData::Text(cmd);
-                    Some(AppAction::SendTextMessage(msg_data, self.tui.get_current_user()))
+                    Some(AppAction::SendTextMessage(cmd))
                 }
                 else {
-                    self.parse_cmd(&cmd[1..])?
+                    self.parse_cmd(&cmd[1..]).await?
                 }
             }
-            AppAction::SendTextMessage(msg_data, pubkey) => {
-                self.send_message(msg_data, pubkey).await?;
+            AppAction::SendPeerMessage(msg_data, peer) => {
+                self.send_message(msg_data, peer).await?;
+                None
+            }
+            AppAction::SendTextMessage(msg_str) => {
+                let msg_data = PeerMessageData::Text(msg_str);
+                let peer = self.tui.get_current_user();
+                Some(AppAction::SendPeerMessage(msg_data, peer))
+            }
+            AppAction::SendImageMessage(path) => {
+                self.send_image(path).await?;
+                None
+            }
+            AppAction::SendFileMessage(path) => {
+                self.send_file(path).await?;
                 None
             }
             AppAction::SetConnected => {

@@ -1,4 +1,8 @@
-use std::io::{self};
+use crate::{
+    component::Component,
+    action,
+    eventmanager::PressedKey
+};
 
 use ed25519_dalek::VerifyingKey;
 use ratatui::{
@@ -7,11 +11,9 @@ use ratatui::{
     widgets::{Row, Table, TableState},
 };
 
-use crate::component::Component;
-use crate::action;
-use crate::eventmanager::PressedKey;
-
 use base64::prelude::*;
+
+use color_eyre::Result;
 
 pub struct FriendsView {
     state: TableState,
@@ -104,7 +106,7 @@ impl Component for FriendsView {
         }
     }
 
-    fn react(&mut self, action: Self::Action) -> io::Result<Option<Self::AppAction>> {
+    fn react(&mut self, action: Self::Action) -> Result<Option<Self::AppAction>> {
         let result = match action {
             Self::Action::SelectNext => {
                 self.state.select_next();

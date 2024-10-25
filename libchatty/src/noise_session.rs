@@ -1,21 +1,20 @@
-use crate::{messaging::AsymmetricMessageCodec, noise_codec::NoiseCodec};
+use crate::noise_codec::NoiseCodec;
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
-use serde::{de::DeserializeOwned, Serialize};
+use pin_project::pin_project;
 use snow::{Builder, HandshakeState, Keypair, TransportState};
-use std::{
-    error::Error,
-    fmt::{Display, Formatter},
-    marker::PhantomData,
-};
+use std::error::Error;
+use strum_macros::Display;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio_util::{
+    codec::{Framed, LengthDelimitedCodec},
+    io::{CopyToBytes, SinkWriter, StreamReader},
+};
 use tracing::{event, Level};
 
-pub type NoiseConnection<T, U, V> = Framed<T, AsymmetricMessageCodec<U, V>>;
-pub type SymmetricNoiseConnection<T, U> = NoiseConnection<T, U, U>;
 type Key = Vec<u8>;
 
+#[derive(Display, Debug)]
 pub enum NoiseSelfType {
     N,
     I,
@@ -23,18 +22,7 @@ pub enum NoiseSelfType {
     K,
 }
 
-// TODO - rewrite this using the strum macros
-impl Display for NoiseSelfType {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        match self {
-            NoiseSelfType::N => write!(f, "N"),
-            NoiseSelfType::I => write!(f, "I"),
-            NoiseSelfType::X => write!(f, "X"),
-            NoiseSelfType::K => write!(f, "K"),
-        }
-    }
-}
-
+#[derive(Display, Debug)]
 pub enum NoisePeerType {
     N,
     I,
@@ -42,45 +30,26 @@ pub enum NoisePeerType {
     K(Key),
 }
 
-impl Display for NoisePeerType {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        match self {
-            NoisePeerType::N => write!(f, "N"),
-            NoisePeerType::I => write!(f, "I"),
-            NoisePeerType::X => write!(f, "X"),
-            NoisePeerType::K(_) => write!(f, "K"),
-        }
-    }
-}
-
-pub struct NoiseTransportBuilder<T, U, V>
+pub struct NoiseBuilder<T>
 where
     T: AsyncRead + AsyncWrite + Unpin,
-    U: Serialize + DeserializeOwned,
-    V: Serialize + DeserializeOwned,
 {
     my_keys: Keypair,
     my_type: NoiseSelfType,
     peer_type: NoisePeerType,
     stream: T,
-    send_type: PhantomData<U>,
-    receive_type: PhantomData<V>,
 }
 
-impl<T, U, V> NoiseTransportBuilder<T, U, V>
+impl<T> NoiseBuilder<T>
 where
     T: AsyncRead + AsyncWrite + Unpin,
-    U: Serialize + DeserializeOwned,
-    V: Serialize + DeserializeOwned,
 {
-    pub fn new(my_keys: Keypair, stream: T) -> NoiseTransportBuilder<T, U, V> {
-        NoiseTransportBuilder {
+    pub fn new(my_keys: Keypair, stream: T) -> Self {
+        Self {
             my_keys,
             my_type: NoiseSelfType::X,
             peer_type: NoisePeerType::X,
             stream,
-            send_type: PhantomData,
-            receive_type: PhantomData,
         }
     }
 
@@ -101,12 +70,7 @@ where
 
     pub async fn build_as_initiator(
         mut self,
-    ) -> Result<
-        (Framed<T, AsymmetricMessageCodec<U, V>>, Option<Vec<u8>>),
-        Box<dyn Error + Send + Sync>,
-    > {
-        event!(Level::INFO, "Building as initiator");
-
+    ) -> Result<NoiseSocket<T>, Box<dyn Error + Send + Sync>> {
         let protocol = format!(
             "Noise_{}{}_25519_ChaChaPoly_BLAKE2b",
             self.my_type, self.peer_type
@@ -122,18 +86,12 @@ where
         let noise = noise.build_initiator()?;
         let noise = handshake(noise, &mut self.stream).await?;
 
-        let remote_key = noise.get_remote_static().map(|x| Vec::from(x));
-        let codec = AsymmetricMessageCodec::<U, V>::new(NoiseCodec::new(noise));
-
-        Ok((Framed::new(self.stream, codec), remote_key))
+        Ok(NoiseSocket::new(self.stream, NoiseCodec::new(noise)))
     }
 
     pub async fn build_as_responder(
         mut self,
-    ) -> Result<
-        (Framed<T, AsymmetricMessageCodec<V, U>>, Option<Vec<u8>>),
-        Box<dyn Error + Send + Sync>,
-    > {
+    ) -> Result<NoiseSocket<T>, Box<dyn Error + Send + Sync>> {
         let protocol = format!(
             "Noise_{}{}_25519_ChaChaPoly_BLAKE2b",
             self.peer_type, self.my_type
@@ -148,11 +106,8 @@ where
 
         let noise = noise.build_responder()?;
         let noise = handshake(noise, &mut self.stream).await?;
-        
-        let remote_key = noise.get_remote_static().map(|x| Vec::from(x));
-        let codec = AsymmetricMessageCodec::<V, U>::new(NoiseCodec::new(noise));
 
-        Ok((Framed::new(self.stream, codec), remote_key))
+        Ok(NoiseSocket::new(self.stream, NoiseCodec::new(noise)))
     }
 }
 
@@ -174,7 +129,7 @@ where
     while !noise.is_handshake_finished() {
         let mut buf = vec![0u8; 65535];
         // Note: We cannot use Tokio Bytes directly since the snow crate expects
-        // an [u8] argument with all elements filled in. Converting the Bytes
+        // an [u8] argument with all elements filled in. Converting Bytes
         // into a format accepted by snow would introduce non-idiomatic code
         // with additional performance penalties.
 
@@ -184,8 +139,7 @@ where
             buf.truncate(len);
             framed.send(Bytes::from(buf.clone())).await?;
             event!(Level::INFO, "Sent handshake message");
-        }
-        else {
+        } else {
             event!(Level::INFO, "Trying to receive a handshake message");
             let msg = framed.next().await.unwrap()?;
             event!(Level::INFO, "Received handshake message");
@@ -195,11 +149,81 @@ where
     }
 
     Ok(noise.into_transport_mode()?)
-        /*
-    if let Some(key) = noise.get_remote_static() {
-        event!(Level::INFO, "Connected to: {:?}", key);
+}
+
+#[pin_project]
+pub struct NoiseSocket<T>(
+    #[pin] SinkWriter<StreamReader<CopyToBytes<Framed<T, NoiseCodec>>, Bytes>>,
+);
+
+impl<T> NoiseSocket<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    pub fn new(stream: T, noise: NoiseCodec) -> Self {
+        let framed = Framed::new(stream, noise);
+        Self(SinkWriter::new(StreamReader::new(CopyToBytes::new(framed))))
     }
-    
-    Ok(NoiseCodec::new(noise))
-        */
+
+    fn deref(&self) -> &Framed<T, NoiseCodec> {
+        self.0
+            .get_ref()
+            .get_ref()
+            .get_ref()
+    }
+
+    fn get_noise(&self) -> &TransportState {
+        self.deref()
+            .codec()
+            .get_noise()
+    }
+
+    pub fn get_remote_static(&self) -> Option<&[u8]> {
+        self.get_noise()
+            .get_remote_static()
+    }
+}
+
+impl<T> AsyncRead for NoiseSocket<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.project();
+        this.0.poll_read(cx, buf)
+    }
+}
+
+impl<T> AsyncWrite for NoiseSocket<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        let this = self.project();
+        this.0.poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let this = self.project();
+        this.0.poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let this = self.project();
+        this.0.poll_shutdown(cx)
+    }
 }

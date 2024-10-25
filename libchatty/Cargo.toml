@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-util = { version = "0.7.12", features = ["codec", "io"] }
 bytes = "1"
 tokio-utp = "0.3.0"
 futures = "0.3"
@@ -26,3 +26,7 @@ rcgen = "0.13.1"
 tracing = "0.1.40"
 chrono = { version = "0.4.38", features = ["serde"] }
 enum-as-inner = "0.6.1"
+anyhow = "1.0.91"
+strum = { version = "0.26.3", features = ["derive"] }
+strum_macros = "0.26.4"
+pin-project = "1.1.7"

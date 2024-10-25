@@ -20,11 +20,16 @@ use ratatui::{
     Terminal,
 };
 
+use color_eyre::Result;
+
 use clap::Parser;
 
 use crate::controller::AppController;
 
-use libchatty::identity::{Myself, Relay, User, UserDb};
+use libchatty::{
+    identity::{Myself, Relay, User, UserDb},
+    system::*
+};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
@@ -35,7 +40,7 @@ use tracing::Level;
 use tracing_appender::{non_blocking, non_blocking::WorkerGuard};
 use tracing_subscriber::filter::EnvFilter;
 
-fn init_tui() -> io::Result<Term> {
+fn init_tui() -> Result<Term> {
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
@@ -44,7 +49,7 @@ fn init_tui() -> io::Result<Term> {
     Ok(terminal)
 }
 
-fn restore_tui() -> io::Result<()> {
+fn restore_tui() -> Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
@@ -75,28 +80,11 @@ struct Args {
     export: Option<PathBuf>,
 }
 
-fn get_default_path() -> OsString {
-    dirs::data_dir()
-        .unwrap()
-        .join("aluminum")
-        .join("user.db")
-        .into_os_string()
-}
-
-fn get_relay_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap()
-        .join("aluminum")
-        .join("relay.toml")
-}
-
 pub struct AppSpawner {
     pub tracker: TaskTracker,
 }
 
-// TODO - replace this with proper UI
-fn make_user() -> io::Result<Myself> {
-    //stdout().write("Name; ");
+fn make_user() -> Result<Myself> {
     println!("Name:");
     let mut name = String::new();
     io::stdin().read_line(&mut name)?;
@@ -116,10 +104,7 @@ fn make_user() -> io::Result<Myself> {
     Ok(Myself::new(name.trim(), surname.trim(), nickname.trim(), description.trim()))
 }
 
-// TODO - move this to a common library
-// - maybe to libchatty
-// - or to another workspace dedicated to generic tooling
-fn init_tracing(name: &str) -> io::Result<WorkerGuard> {
+fn init_tracing(name: &str) -> Result<WorkerGuard> {
     let file = File::create(format!("{name}.log"))?;
     let (non_blocking, guard) = non_blocking(file);
 
@@ -139,13 +124,14 @@ fn init_tracing(name: &str) -> io::Result<WorkerGuard> {
 }
 
 impl AppSpawner {
-    // TODO: Fix the bug where the app panics if ~/.local/share/aluminum doesn't exist
-    // TODO: separate database handling into another function
-    fn start() -> io::Result<Self> {
+    fn start() -> Result<Self> {
         let token = CancellationToken::new();
         let tracker = TaskTracker::new();
         let app_tracker = tracker.clone();
         let args = Args::parse();
+
+        let user_dir = get_user_dir();
+        let _ = std::fs::create_dir_all(user_dir);
 
         let mut db = if args.db.exists() {
             UserDb::load(&args.db)
@@ -200,13 +186,13 @@ impl AppSpawner {
             let _tracing = _guard;
             app.run().await?;
             restore_tui()?;
-            Ok::<(), io::Error>(())
+            Ok::<(), color_eyre::Report>(())
         });
 
         Ok(Self { tracker })
     }
 
-    pub async fn run() -> io::Result<()> {
+    pub async fn run() -> Result<()> {
         let handle = AppSpawner::start()?;
         handle.tracker.wait().await;
         Ok(())

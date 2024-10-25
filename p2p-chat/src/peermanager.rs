@@ -2,6 +2,7 @@ use libchatty::{
     identity::Myself,
     messaging::{PeerMessageData, PeerPacket, UserMessage},
     noise_session::*,
+    noise_transport::*,
     utils,
 };
 
@@ -9,14 +10,15 @@ use std::{error::Error, net::SocketAddr, time::Duration};
 
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
-use quinn::{Connection, ConnectionError, Endpoint};
+use quinn::{Connection, Endpoint};
 use tokio::{sync::mpsc, time::sleep};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{event, Level};
 
 use crate::connmanager::ConnMessage;
 
-type PeerConnection = NoiseConnection<QuinnStream, PeerPacket, PeerPacket>;
+type QuinnStream = tokio::io::Join<quinn::RecvStream, quinn::SendStream>;
+type PeerConnection = NoiseTransport<QuinnStream, PeerPacket, PeerPacket>;
 
 pub enum P2pRole {
     Initiator,
@@ -33,8 +35,6 @@ struct PeerManager {
     rx: mpsc::Receiver<PeerManagerCommand>,
     tx: mpsc::Sender<ConnMessage>,
 }
-
-type QuinnStream = tokio::io::Join<quinn::RecvStream, quinn::SendStream>;
 
 impl PeerManager {
     async fn run(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -127,17 +127,19 @@ impl PeerManager {
         let my_keys = utils::ed25519_to_noise(&self.identity.private_key);
         let peer_key = utils::ed25519_verifying_to_x25519(&self.peer_key);
 
-        let transport  =
-            NoiseTransportBuilder::<QuinnStream, PeerPacket, PeerPacket>::new(
+        let stream =
+            NoiseBuilder::<QuinnStream>::new(
                 my_keys, stream,
             )
             .set_my_type(NoiseSelfType::K)
             .set_peer_type(NoisePeerType::K(peer_key));
 
-        let (transport, _) = match self.role {
-            P2pRole::Initiator => transport.build_as_initiator().await?,
-            P2pRole::Responder => transport.build_as_responder().await?,
+        let stream = match self.role {
+            P2pRole::Initiator => stream.build_as_initiator().await?,
+            P2pRole::Responder => stream.build_as_responder().await?,
         };
+
+        let transport = NoiseTransport::<QuinnStream, PeerPacket, PeerPacket>::new(stream);
 
         Ok(transport)
     }

@@ -1,7 +1,8 @@
-use std::{
-    collections::VecDeque,
-    io::{self},
-    rc::Rc,
+use crate::{
+    component::Component,
+    action,
+    eventmanager::PressedKey,
+    message::DisplayMessage
 };
 
 use layout::Size;
@@ -14,12 +15,7 @@ use ratatui::{
 use tui_textarea::TextArea;
 use tui_scrollview::*;
 
-use crate::{
-    component::Component,
-    action,
-    eventmanager::PressedKey,
-    message::DisplayMessage
-};
+use color_eyre::Result;
 
 #[derive(Debug)]
 pub struct MessageView<'a> {
@@ -208,7 +204,7 @@ impl<'a> Component for MessageView<'a> {
         }
     }
 
-    fn react(&mut self, action: Self::Action) -> io::Result<Option<Self::AppAction>> {
+    fn react(&mut self, action: Self::Action) -> Result<Option<Self::AppAction>> {
         let result = match action {
             Self::Action::ScrollUp => {
                 self.scroll_up();

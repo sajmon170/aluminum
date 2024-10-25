@@ -5,6 +5,7 @@ use libchatty::{
     identity::{Myself, UserDb},
     messaging::{RelayRequest, RelayResponse},
     noise_session::*,
+    noise_transport::*,
     quinn_session::*,
     utils,
 };
@@ -66,6 +67,7 @@ enum Notify {
 
 type ConnectionDb = HashMap<VerifyingKey, SocketAddr>;
 type NotifyDb = HashMap<SocketAddr, mpsc::Sender<Notify>>;
+type QuicStream = Join<RecvStream, SendStream>;
 
 async fn process(
     conn: Incoming,
@@ -86,19 +88,17 @@ async fn process(
         utils::ed25519_to_noise(key)
     };
 
-    let (mut stream, remote_key) = NoiseTransportBuilder::<
-        Join<RecvStream, SendStream>,
-        RelayRequest,
-        RelayResponse,
-    >::new(keys, stream)
+    let mut socket = NoiseBuilder::<Join<RecvStream, SendStream>>::new(keys, stream)
     .set_my_type(NoiseSelfType::K)
     .set_peer_type(NoisePeerType::I)
     .build_as_responder()
     .await
     .expect("Handshake error");
 
+    let mut stream = NoiseTransport::<QuicStream, RelayResponse, RelayRequest>::new(socket);
+
+    let remote_noise_key = Vec::<u8>::from(stream.get_ref().get_remote_static().unwrap());
     let (mut tx, mut rx) = stream.split();
-    let remote_noise_key = remote_key.unwrap();
 
     let msg = rx.next().await.unwrap()?;
     let remote_identity_key = match msg {

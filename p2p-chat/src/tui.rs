@@ -1,16 +1,19 @@
-use crate::component::Component;
-use crate::action::AppAction;
-use crate::eventmanager::PressedKey;
-use crate::friendsview::{DisplayUser, FriendsView, FriendsViewAction};
-use crate::message::{DisplayMessage, MessageStyle};
-use crate::messageview::{MessageView, MessageViewAction};
+use crate::{
+    component::Component,
+    action::AppAction,
+    eventmanager::PressedKey,
+    friendsview::{DisplayUser, FriendsView, FriendsViewAction},
+    message::{DisplayMessage, MessageStyle},
+    messageview::{MessageView, MessageViewAction},
+};
+
 use ed25519_dalek::VerifyingKey;
 use libchatty::identity::UserDb;
 use libchatty::messaging::{PeerMessageData, UserMessage};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use std::sync::{Arc, Mutex};
 
-use std::io::{self, Stdout};
+use std::io::Stdout;
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{backend::CrosstermBackend, prelude::*, widgets::Tabs, Terminal};
@@ -19,6 +22,8 @@ type Term = Terminal<CrosstermBackend<Stdout>>;
 
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter, FromRepr};
+
+use color_eyre::Result;
 
 pub struct Tui<'a> {
     message_view: MessageView<'a>,
@@ -105,7 +110,7 @@ impl<'a> Tui<'a> {
         self.conn_status = ConnectionStatus::Offline;
     }
 
-    pub fn draw(&mut self, terminal: &mut Term) -> io::Result<()> {
+    pub fn draw(&mut self, terminal: &mut Term) -> Result<()> {
         terminal.draw(|frame| {
             let [top, content] = Layout::default()
                 .direction(Direction::Vertical)
@@ -194,7 +199,7 @@ impl<'a> Tui<'a> {
         }
     }
 
-    pub fn react(&mut self, action: TuiAction) -> io::Result<Option<AppAction>> {
+    pub fn react(&mut self, action: TuiAction) -> Result<Option<AppAction>> {
         let result = match action {
             TuiAction::SwitchTab => {
                 self.next_tab();

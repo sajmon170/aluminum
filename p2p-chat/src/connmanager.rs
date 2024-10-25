@@ -3,13 +3,14 @@ use libchatty::{
     identity::{Myself, Relay},
     noise_session::*,
     quinn_session::*,
+    noise_transport::*,
     utils,
 };
 
 use std::{
     collections::HashMap,
     error::Error,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4}, time::Duration,
+    net::SocketAddr, time::Duration,
 };
 
 use crate::peermanager::{P2pRole, PeerManagerCommand, PeerManagerHandle};
@@ -17,11 +18,15 @@ use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use rustls::pki_types::CertificateDer;
-use tokio::{io::Join, sync::mpsc, time::sleep};
+use tokio::{
+    fs::File,
+    io::{Join, AsyncRead, AsyncWrite},
+    sync::mpsc, time::sleep
+};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{event, Level};
 
-type RelayConnection<T> = NoiseConnection<T, RelayRequest, RelayResponse>;
+type RelayConnection<T> = NoiseTransport<T, RelayRequest, RelayResponse>;
 type QuicRelayConn = RelayConnection<Join<RecvStream, SendStream>>;
 
 // TODO: Maybe move this to libchatty?
@@ -86,7 +91,6 @@ impl ConnManager {
                         .await?;
                 }
                 Some(Ok(RelayResponse::AwaitConnection(pubkey, addr))) = stream.next() => {
-                    event!(Level::INFO, "Someone wants to connect: {addr}");
                     self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Responder);
                 }
                 _ = self.token.cancelled() => { break }
@@ -157,9 +161,7 @@ impl ConnManager {
         self.connections.insert(pubkey, handle);
     }
 
-    async fn upgrade_relay_connection<
-        T: Unpin + tokio::io::AsyncRead + tokio::io::AsyncWrite,
-    >(
+    async fn upgrade_relay_connection<T: Unpin + AsyncRead + AsyncWrite>(
         &self,
         stream: T,
     ) -> Result<RelayConnection<T>, Box<dyn Error + Send + Sync>> {
@@ -167,14 +169,14 @@ impl ConnManager {
         let server_key =
             utils::ed25519_verifying_to_x25519(&self.relay.public_key);
 
-        let (transport, _) =
-            NoiseTransportBuilder::<T, RelayRequest, RelayResponse>::new(
-                my_keys, stream,
-            )
+        let stream =
+            NoiseBuilder::new(my_keys, stream)
             .set_my_type(NoiseSelfType::I)
             .set_peer_type(NoisePeerType::K(server_key))
             .build_as_initiator()
             .await?;
+
+        let transport = NoiseTransport::<T, RelayRequest, RelayResponse>::new(stream);
 
         Ok(transport)
     }
@@ -182,6 +184,7 @@ impl ConnManager {
 
 pub enum ConnInstruction {
     Send(VerifyingKey, PeerMessageData),
+    TransferFile(VerifyingKey, File)
 }
 
 #[derive(Debug)]

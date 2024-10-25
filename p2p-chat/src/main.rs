@@ -5,6 +5,7 @@ mod controller;
 mod eventmanager;
 mod friendsview;
 mod message;
+mod messagerepl;
 mod messageview;
 mod peermanager;
 mod spawner;

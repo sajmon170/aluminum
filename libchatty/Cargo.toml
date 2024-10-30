@@ -21,7 +21,7 @@ base64 = "0.22.1"
 toml = "0.8.19"
 
 quinn = "0.11.3"
-rustls = { version = "0.23.12", features = ["ring"] }
+rustls = { version = "0.23.12", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 rcgen = "0.13.1"
 tracing = "0.1.40"
 chrono = { version = "0.4.38", features = ["serde"] }

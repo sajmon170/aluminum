@@ -15,7 +15,7 @@ dirs = "5.0.1"
 clap = { version = "4.5.16", features = ["derive"] }
 
 quinn = "0.11.3"
-rustls = { version = "0.23.12", features = ["ring"] }
+rustls = { version = "0.23.12", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 rcgen = "0.13.1"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

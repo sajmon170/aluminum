@@ -95,9 +95,12 @@ impl<'a> MessageView<'a> {
             Span::from(" "),
             Span::styled(
                 &msg.author,
-                Style::default().fg(msg.get_message_color()).bold(),
+                msg.get_style().fg(msg.get_user_color()),
             ),
-            Span::from(">"),
+            Span::styled(
+                ">",
+                Style::default().fg(msg.get_text_color())         
+            ),
         ];
 
         let name_str = name_spans
@@ -124,7 +127,10 @@ impl<'a> MessageView<'a> {
         ))
         .chain(wrapped.map(|x| Line::from(x)));
 
-        let paragraph = Paragraph::new(Text::from_iter(lines));
+        let paragraph = Paragraph::new(
+            Text::from_iter(lines)
+                .style(Style::default().fg(msg.get_text_color()))
+        );
 
         (paragraph, height)
     }

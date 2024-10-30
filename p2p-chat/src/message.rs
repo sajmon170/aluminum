@@ -1,10 +1,11 @@
 use chrono::{DateTime, Local, Utc};
-use ratatui::style::Color;
+use ratatui::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MessageStyle {
     Sender,
-    Responder
+    Responder,
+    Info
 }
 
 // NOTE: We can't implement a Widget trait for the DisplayMessage since
@@ -30,10 +31,25 @@ impl DisplayMessage {
             .to_string()
     }
 
-    pub fn get_message_color(&self) -> Color {
+    pub fn get_user_color(&self) -> Color {
         match self.style {
             MessageStyle::Sender => Color::Blue,
-            MessageStyle::Responder => Color::Green
+            MessageStyle::Responder => Color::Green,
+            MessageStyle::Info => Color::DarkGray
+        }
+    }
+
+    pub fn get_text_color(&self) -> Color {
+        match self.style {
+            MessageStyle::Info => Color::DarkGray,
+            _ => Color::White
+        }
+    }
+
+    pub fn get_style(&self) -> Style {
+        match self.style {
+            MessageStyle::Info => Style::default(),
+            _ => Style::default().bold()
         }
     }
 }

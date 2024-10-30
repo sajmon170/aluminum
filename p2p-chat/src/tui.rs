@@ -7,23 +7,33 @@ use crate::{
     messageview::{MessageView, MessageViewAction},
 };
 
-use ed25519_dalek::VerifyingKey;
-use libchatty::identity::UserDb;
-use libchatty::messaging::{PeerMessageData, UserMessage};
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
-use std::sync::{Arc, Mutex};
+use libchatty::{
+    identity::UserDb,
+    messaging::{PeerMessageData, UserMessage},
+    system::FileMetadata
+};
 
-use std::io::Stdout;
+use std::{
+    sync::{Arc, Mutex},
+    io::Stdout
+};
+
+use ed25519_dalek::VerifyingKey;
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use ratatui::{backend::CrosstermBackend, prelude::*, widgets::Tabs, Terminal};
-
 type Term = Terminal<CrosstermBackend<Stdout>>;
+
+use ratatui::{backend::CrosstermBackend, prelude::*, widgets::Tabs, Terminal};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+
+use chrono::Utc;
 
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter, FromRepr};
 
 use color_eyre::Result;
+
+use humansize::{format_size, DECIMAL};
 
 pub struct Tui<'a> {
     message_view: MessageView<'a>,
@@ -237,11 +247,11 @@ impl<'a> Tui<'a> {
         };
 
         for msg in &msgs {
-            self.add_message(self.get_current_user(), msg);
+            self.add_user_message(self.get_current_user(), msg);
         }
     }
 
-    pub fn add_message(&mut self, to: VerifyingKey, msg: &UserMessage) {
+    pub fn add_user_message(&mut self, to: VerifyingKey, msg: &UserMessage) {
         if let Some(user) = self.friends_view.get_selected_user() {
             if user == to {
                 let user_meta = {
@@ -269,6 +279,29 @@ impl<'a> Tui<'a> {
                 self.message_view.append(message);
             }
         }
+    }
+
+    pub fn add_info_message(&mut self, msg: String) {
+        let message = DisplayMessage {
+            content: msg,
+            author: String::from("Info"),
+            timestamp: Utc::now(),
+            style: MessageStyle::Info
+        };
+
+        self.message_view.append(message);
+    }
+
+    pub fn show_invite(&mut self, invite: FileMetadata) {
+        self.add_info_message(
+            format!("User wants to share a file: {} ({})",
+                    invite.name,
+                    format_size(invite.size, DECIMAL))
+        );
+    }
+
+    pub fn show_download_notification(&mut self) {
+        self.add_info_message(String::from("Received a file."));
     }
 }
 

@@ -56,12 +56,16 @@ impl Decoder for NoiseFrameCodec {
 }
 
 pub struct NoiseCodec {
+    framing: LengthDelimitedCodec,
     noise: NoiseFrameCodec
 }
 
 impl NoiseCodec {
     pub fn new(noise: TransportState) -> Self {
-        Self { noise: NoiseFrameCodec::new(noise) }
+        Self {
+            framing: LengthDelimitedCodec::new(),
+            noise: NoiseFrameCodec::new(noise)
+        }
     }
 
     pub fn get_noise(&self) -> &TransportState {
@@ -77,9 +81,13 @@ impl Encoder<Bytes> for NoiseCodec {
         data: Bytes,
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
+        let mut noise_frames = BytesMut::with_capacity(65535);
+        
         for chunk in data.chunks(65535) {
-            self.noise.encode(chunk.to_owned().into(), dst)?;
+            self.noise.encode(chunk.to_owned().into(), &mut noise_frames)?;
         }
+
+        self.framing.encode(Bytes::from(noise_frames), dst)?;
 
         Ok(())
     }
@@ -93,24 +101,25 @@ impl Decoder for NoiseCodec {
         &mut self,
         src: &mut BytesMut,
     ) -> Result<Option<Self::Item>, Self::Error> {
-        let mut result = BytesMut::with_capacity(65535);
+        if let Some(mut frames) = self.framing.decode(src)? {
+            let mut result = BytesMut::with_capacity(65535);
+            
+            while frames.len() > 0 {
+                let len = u16::from_be_bytes(frames[..2].try_into().unwrap()) as usize
+                    + std::mem::size_of::<u16>();
 
-        if src.is_empty() {
-            return Ok(None);
-        }
+                let mut frame = frames.split_to(len);
 
-        while src.len() > 0 {
-            let len = u16::from_be_bytes(src[..2].try_into().unwrap()) as usize
-                + std::mem::size_of::<u16>();
+                let decoded = self.noise.decode(&mut frame)?
+                    .ok_or(std::io::ErrorKind::InvalidData)?;
 
-            let mut frame = src.split_to(len);
-
-            match self.noise.decode(&mut frame)? {
-                Some(decoded) => result.extend_from_slice(decoded.as_ref()),
-                None => return Ok(None)
+                result.extend_from_slice(&decoded);
             }
-        }
 
-        Ok(Some(Bytes::from(result)))
+            Ok(Some(Bytes::from(result)))
+        }
+        else {
+            Ok(None)
+        }
     }
 }

@@ -8,7 +8,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 use crate::{
-    connmanager::{ConnInstruction, ConnManagerHandle, ConnMessage},
+    connmanager::ConnManagerHandle,
+    peermanager::PeerCommand,
     eventmanager::{AppEvent, EventManagerHandle},
     messageview::MessageViewAction,
     messagerepl::{Cli, Command, Parser},
@@ -102,9 +103,9 @@ impl<'a> AppController<'a> {
         match event {
             AppEvent::FrameTick => Some(AppAction::Redraw),
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
-            AppEvent::ReceiveMessage(msg) => {
-                Some(AppAction::ReceiveMessage(msg))
-            },
+            AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMessage(msg)),
+            AppEvent::ReceiveInvite(invite) => Some(AppAction::ShowInvite(invite)),
+            AppEvent::NotifyDownloaded => Some(AppAction::ShowDownloadNotification),
             AppEvent::SetConnected => Some(AppAction::SetConnected),
             AppEvent::SetConnecting => Some(AppAction::SetConnecting),
             AppEvent::SetOffline => Some(AppAction::SetOffline)
@@ -112,11 +113,11 @@ impl<'a> AppController<'a> {
     }
 
     fn receive_message(&mut self, msg: UserMessage) {
-        self.tui.add_message(msg.author, &msg);
-        self.add_message(msg.author, msg);
+        self.tui.add_user_message(msg.author, &msg);
+        self.add_user_message(msg.author, msg);
     }
 
-    fn add_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
+    fn add_user_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
         let mut db = self.db.lock().unwrap();
         let log = db.messages.entry(user_log).or_insert(Vec::new());
         log.push(msg);
@@ -129,7 +130,8 @@ impl<'a> AppController<'a> {
         // This should return an AppAction
         match cli.command {
             Command::Img { path } => self.send_image(path).await?,
-            Command::File { path } => self.send_file(path).await?
+            Command::Share { path } => self.share_file(path).await?,
+            Command::Accept => self.get_file().await?
         };
         
         Ok(None)
@@ -139,9 +141,15 @@ impl<'a> AppController<'a> {
         Ok(())
     }
 
-    async fn send_file(&mut self, path: PathBuf) -> Result<()> {
-        let file = File::open(path).await?;
-        //self.conn_manager.tx.send(ConnInstruction::TransferFile((), ()));
+    async fn share_file(&mut self, path: PathBuf) -> Result<()> {
+        let to = self.tui.get_current_user();
+        self.conn_manager.send(to, PeerCommand::ShareFile(path)).await;
+        Ok(())
+    }
+
+    async fn get_file(&mut self) -> Result<()> {
+        let to = self.tui.get_current_user();
+        self.conn_manager.send(to, PeerCommand::GetFile).await;
         Ok(())
     }
 
@@ -157,14 +165,9 @@ impl<'a> AppController<'a> {
 
         let user_msg = UserMessage::new(identity.get_public_key(), msg.clone());
 
-        self.tui.add_message(to, &user_msg);
-        self.add_message(to, user_msg);
-
-        self.conn_manager
-            .tx
-            .send(ConnInstruction::Send(to, msg))
-            .await
-            .unwrap();
+        self.tui.add_user_message(to, &user_msg);
+        self.add_user_message(to, user_msg);
+        self.conn_manager.send(to, PeerCommand::Send(msg)).await;
 
         Ok(())
     }
@@ -191,6 +194,14 @@ impl<'a> AppController<'a> {
                 self.receive_message(msg);
                 None
             }
+            AppAction::ShowInvite(invite) => {
+                self.tui.show_invite(invite);
+                None
+            }
+            AppAction::ShowDownloadNotification => {
+                self.tui.show_download_notification();
+                None
+            }
             AppAction::ParseCommand(cmd) => {
                 if cmd.chars().nth(0).unwrap() != '/' {
                     Some(AppAction::SendTextMessage(cmd))
@@ -212,8 +223,8 @@ impl<'a> AppController<'a> {
                 self.send_image(path).await?;
                 None
             }
-            AppAction::SendFileMessage(path) => {
-                self.send_file(path).await?;
+            AppAction::ShareFile(path) => {
+                self.share_file(path).await?;
                 None
             }
             AppAction::SetConnected => {

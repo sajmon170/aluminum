@@ -4,6 +4,7 @@ use libchatty::{
     noise_session::*,
     quinn_session::*,
     noise_transport::*,
+    system::FileMetadata,
     utils,
 };
 
@@ -13,13 +14,12 @@ use std::{
     net::SocketAddr, time::Duration,
 };
 
-use crate::peermanager::{P2pRole, PeerManagerCommand, PeerManagerHandle};
+use crate::peermanager::{P2pRole, PeerCommand, PeerManagerHandle};
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use rustls::pki_types::CertificateDer;
 use tokio::{
-    fs::File,
     io::{Join, AsyncRead, AsyncWrite},
     sync::mpsc, time::sleep
 };
@@ -36,7 +36,7 @@ struct ConnManager {
     identity: Myself,
     relay: Relay,
     tx: mpsc::Sender<ConnMessage>,
-    rx: mpsc::Receiver<ConnInstruction>,
+    rx: mpsc::Receiver<ConnCommand>,
     token: CancellationToken,
     tracker: TaskTracker,
     connections: HashMap<VerifyingKey, PeerManagerHandle>,
@@ -44,6 +44,8 @@ struct ConnManager {
 
 pub enum ConnMessage {
     UserMessage(UserMessage),
+    FileInvite(FileMetadata),
+    DownloadedFile,
     ServerOffline,
     Connecting,
     Connected
@@ -66,9 +68,9 @@ impl ConnManager {
 
         loop {
             tokio::select! {
-                Some(ConnInstruction::Send(pubkey, message)) = self.rx.recv() => {
-                    if !self.connections.contains_key(&pubkey) {
-                        stream.send(RelayRequest::GetUser(pubkey)).await?;
+                Some(ConnCommand {to, command}) = self.rx.recv() => {
+                    if !self.connections.contains_key(&to) {
+                        stream.send(RelayRequest::GetUser(to)).await?;
                         
                         let addr = stream.next().await
                             .ok_or("Connection ended unexpectedly")??
@@ -80,14 +82,14 @@ impl ConnManager {
                         // that the peer couldn't be found.
 
                         event!(Level::INFO, "Trying to connect to: {addr}");
-                        self.register_connection(endpoint.clone(), pubkey, addr, P2pRole::Initiator);
+                        self.register_connection(endpoint.clone(), to, addr, P2pRole::Initiator);
                     }
 
                     self.connections
-                        .get(&pubkey)
+                        .get(&to)
                         .unwrap()
                         .tx
-                        .send(PeerManagerCommand::Send(message))
+                        .send(command)
                         .await?;
                 }
                 Some(Ok(RelayResponse::AwaitConnection(pubkey, addr))) = stream.next() => {
@@ -182,14 +184,14 @@ impl ConnManager {
     }
 }
 
-pub enum ConnInstruction {
-    Send(VerifyingKey, PeerMessageData),
-    TransferFile(VerifyingKey, File)
+struct ConnCommand {
+    to: VerifyingKey,
+    command: PeerCommand
 }
 
 #[derive(Debug)]
 pub struct ConnManagerHandle {
-    pub tx: mpsc::Sender<ConnInstruction>,
+    tx: mpsc::Sender<ConnCommand>,
     task_tracker: TaskTracker,
 }
 
@@ -236,5 +238,9 @@ impl ConnManagerHandle {
             tx: command_tx,
             task_tracker: tracker.clone(),
         }
+    }
+
+    pub async fn send(&mut self, to: VerifyingKey, command: PeerCommand) {
+        let _ = self.tx.send(ConnCommand { to, command }).await;
     }
 }

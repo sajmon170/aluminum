@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use enum_as_inner::EnumAsInner;
 use chrono::{DateTime, Utc};
+use crate::system::FileMetadata;
 
 // TODO
 // Rename RelayRequest to UserToRelayMessage
@@ -27,6 +28,8 @@ pub enum RelayResponse {
 #[derive(Clone, Serialize, Deserialize, Debug, EnumAsInner)]
 pub enum PeerPacket {
     Send(PeerMessageData),
+    Share(FileMetadata),
+    GimmeFile,
     Ack,
     Bye,
 }

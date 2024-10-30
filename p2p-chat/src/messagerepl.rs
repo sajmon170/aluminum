@@ -12,5 +12,6 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Img { path: PathBuf },
-    File { path: PathBuf }
+    Share { path: PathBuf },
+    Accept
 }

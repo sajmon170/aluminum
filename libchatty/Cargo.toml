@@ -30,3 +30,5 @@ anyhow = "1.0.91"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.4"
 pin-project = "1.1.7"
+infer = "0.16.0"
+mime = "0.3.17"

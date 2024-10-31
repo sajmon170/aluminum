@@ -179,6 +179,12 @@ impl PeerManager {
         Ok(())
     }
 
+    // TODO:
+    // - pass the destination directory as an argument to the download() method
+    // - separate downloading images from files
+
+    // or: just download everything into Downloads
+
     async fn download_file(
         &mut self,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {

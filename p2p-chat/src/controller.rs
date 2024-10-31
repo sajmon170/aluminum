@@ -20,6 +20,7 @@ use crate::{
 use libchatty::{
     identity::{Myself, Relay, UserDb},
     messaging::{PeerMessageData, UserMessage},
+    system::FileMetadata
 };
 
 use tracing::{event, Level};
@@ -104,7 +105,7 @@ impl<'a> AppController<'a> {
             AppEvent::FrameTick => Some(AppAction::Redraw),
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
             AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMessage(msg)),
-            AppEvent::ReceiveInvite(invite) => Some(AppAction::ShowInvite(invite)),
+            AppEvent::ReceiveInvite(invite) => Some(AppAction::ReceiveInvite(invite)),
             AppEvent::NotifyDownloaded => Some(AppAction::ShowDownloadNotification),
             AppEvent::SetConnected => Some(AppAction::SetConnected),
             AppEvent::SetConnecting => Some(AppAction::SetConnecting),
@@ -117,6 +118,16 @@ impl<'a> AppController<'a> {
         self.add_user_message(msg.author, msg);
     }
 
+    fn receive_invite(&mut self, invite: FileMetadata) -> Option<AppAction> {
+        if let Some(t) = &invite.filetype {
+            if t.type_() == mime::IMAGE {
+                return Some(AppAction::DownloadFile)
+            }
+        }
+
+        Some(AppAction::ShowInvite(invite))
+    }
+
     fn add_user_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
         let mut db = self.db.lock().unwrap();
         let log = db.messages.entry(user_log).or_insert(Vec::new());
@@ -127,18 +138,12 @@ impl<'a> AppController<'a> {
         let args = shlex::split(cmd).ok_or(eyre::Report::msg("error: Invalid quoting"))?;
         let cli = Cli::try_parse_from(args).map_err(eyre::Report::msg)?;
 
-        // This should return an AppAction
-        match cli.command {
-            Command::Img { path } => self.send_image(path).await?,
-            Command::Share { path } => self.share_file(path).await?,
-            Command::Accept => self.get_file().await?
+        let action = match cli.command {
+            Command::Share { path } => AppAction::ShareFile(path),
+            Command::Accept => AppAction::DownloadFile
         };
         
-        Ok(None)
-    }
-
-    async fn send_image(&mut self, path: PathBuf) -> Result<()> {
-        Ok(())
+        Ok(Some(action))
     }
 
     async fn share_file(&mut self, path: PathBuf) -> Result<()> {
@@ -194,9 +199,8 @@ impl<'a> AppController<'a> {
                 self.receive_message(msg);
                 None
             }
-            AppAction::ShowInvite(invite) => {
-                self.tui.show_invite(invite);
-                None
+            AppAction::ReceiveInvite(invite) => {
+                self.receive_invite(invite)
             }
             AppAction::ShowDownloadNotification => {
                 self.tui.show_download_notification();
@@ -219,12 +223,12 @@ impl<'a> AppController<'a> {
                 let peer = self.tui.get_current_user();
                 Some(AppAction::SendPeerMessage(msg_data, peer))
             }
-            AppAction::SendImageMessage(path) => {
-                self.send_image(path).await?;
-                None
-            }
             AppAction::ShareFile(path) => {
                 self.share_file(path).await?;
+                None
+            }
+            AppAction::DownloadFile => {
+                self.get_file().await?;
                 None
             }
             AppAction::SetConnected => {
@@ -237,6 +241,10 @@ impl<'a> AppController<'a> {
             }
             AppAction::SetOffline => {
                 self.tui.set_offline();
+                None
+            }
+            AppAction::ShowInvite(invite) => {
+                self.tui.show_invite(invite);
                 None
             }
         };

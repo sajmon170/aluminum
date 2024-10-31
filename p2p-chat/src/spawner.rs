@@ -27,7 +27,7 @@ use clap::Parser;
 use crate::controller::AppController;
 
 use libchatty::{
-    identity::{Myself, Relay, User, UserDb},
+    identity::{Myself, IdentityBuilder, Relay, User, UserDb},
     system::*
 };
 
@@ -101,7 +101,14 @@ fn make_user() -> Result<Myself> {
     let mut description = String::new();
     io::stdin().read_line(&mut description)?;
 
-    Ok(Myself::new(name.trim(), surname.trim(), nickname.trim(), description.trim()))
+    let myself = IdentityBuilder::new()
+        .name(name.trim().into())
+        .surname(surname.trim().into())
+        .nickname(nickname.trim().into())
+        .description(description.trim().into())
+        .build();
+
+    Ok(myself)
 }
 
 fn init_tracing(name: &str) -> Result<WorkerGuard> {

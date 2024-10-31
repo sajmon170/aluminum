@@ -62,28 +62,6 @@ pub struct Myself {
 }
 
 impl Myself {
-    pub fn new(
-        name: &str,
-        surname: &str,
-        nickname: &str,
-        description: &str,
-    ) -> Self {
-        let mut csprng = OsRng;
-        let private_key = SigningKey::generate(&mut csprng);
-
-        Self {
-            metadata: UserMetadata {
-                name: String::from(name),
-                surname: String::from(surname),
-                nickname: String::from(nickname),
-                description: String::from(description),
-                version: 0,
-            },
-            private_key,
-        }
-    }
-    // TODO: Implement updating your identity
-
     pub fn share(&self) -> User {
         User {
             metadata: self.metadata.clone(),
@@ -93,6 +71,73 @@ impl Myself {
 
     pub fn get_public_key(&self) -> VerifyingKey {
         self.private_key.verifying_key()
+    }
+
+    pub fn get_private_key(&self) -> &SigningKey {
+        &self.private_key
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IdentityBuilder {
+    name: String,
+    surname: String,
+    nickname: String,
+    description: String,
+    private_key: Option<SigningKey>
+}
+
+impl IdentityBuilder {
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            surname: String::new(),
+            nickname: String::new(),
+            description: String::new(),
+            private_key: None
+        }
+    }
+    
+    pub fn name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn surname(mut self, surname: String) -> Self {
+        self.surname = surname;
+        self
+    }
+
+    pub fn nickname(mut self, nickname: String) -> Self {
+        self.nickname = nickname;
+        self
+    }
+
+    pub fn description(mut self, description: String) -> Self {
+        self.description = description;
+        self
+    }
+
+    pub fn with_key(mut self, private_key: SigningKey) -> Self {
+        self.private_key = Some(private_key);
+        self
+    }
+
+    pub fn build(self) -> Myself {
+        Myself {
+            metadata: UserMetadata {
+                name: self.name,
+                surname: self.surname,
+                nickname: self.nickname,
+                description: self.description,
+                version: 0
+            },
+            private_key: self.private_key.unwrap_or_else(|| {
+                println!("Here!");
+                let mut csprng = OsRng;
+                SigningKey::generate(&mut csprng)
+            })
+        }
     }
 }
 

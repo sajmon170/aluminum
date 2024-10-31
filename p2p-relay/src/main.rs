@@ -2,7 +2,7 @@
 use futures::{sink::SinkExt, stream::StreamExt};
 
 use libchatty::{
-    identity::{Myself, UserDb},
+    identity::{Myself, UserDb, IdentityBuilder},
     messaging::{RelayRequest, RelayResponse},
     noise_session::*,
     noise_transport::*,
@@ -32,17 +32,9 @@ use tracing_subscriber::filter::EnvFilter;
 // TODO - move this into a sseparate library
 use color_eyre::eyre::Result;
 
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::collections::HashMap;
 use std::fs::File;
-
-// TODO: allow exporting your identity as Relay
-// -> You need to provide an IP address
-// ...or maybe ignore this and just write the relay file manually.
-// The relay doesn't know its public IP address and port, only its public key
-// => Add a get public key flag
-
-// TODO - fix connmanager (currently it uses db instead of the Relay struct)
 
 use tokio::io::{AsyncRead, AsyncWrite, Join};
 
@@ -174,7 +166,7 @@ fn get_default_path() -> PathBuf {
     dirs::data_dir()
         .unwrap()
         .join("aluminum")
-        .join("newserver.db")
+        .join("server.db")
 }
 
 /// Aluminum relay server
@@ -183,7 +175,15 @@ fn get_default_path() -> PathBuf {
 struct Args {
     /// Prints your identity to stdout
     #[arg(long, value_name = "PATH")]
-    public: bool,
+    print_public: bool,
+
+    /// Prints your private key to stdout
+    #[arg(long, value_name = "PATH")]
+    print_private: bool,
+
+    /// Creates a new identity with given Ed25519 private key in Base64
+    #[arg(long, value_name = "PATH")]
+    with_key: Option<String>
 }
 
 #[tokio::main]
@@ -191,29 +191,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
     color_eyre::install()?;
     let _guard = init_tracing()?;
 
+    let args = Args::parse();
+
     let path = get_default_path();
     let serverdb = if path.exists() {
         UserDb::load(&path)
     }
     else {
-        UserDb::new(
+        let mut myself = IdentityBuilder::new()
+            .name(String::from("Serwer"))
+            .surname(String::from("Serwerowsky"))
+            .nickname(String::from("server"))
+            .description(String::from("serwuje użytkowników z tradycją od 2024 roku"));
+
+        if let Some(key) = args.with_key {
+            let private = BASE64_STANDARD.decode(key)?;
+            myself = myself.with_key(SigningKey::from_bytes(&private.try_into().unwrap()));
+        };
+        
+        let db = UserDb::new(
             path,
-            Myself::new(
-                "Serwer",
-                "Serwerowsky",
-                "server",
-                "serwuje użytkowników z tradycją od 2024 roku",
-            ),
-        )
+            myself.build()
+        );
+
+        db.save();
+
+        db
     };
 
     let conndb = Arc::new(Mutex::new(ConnectionDb::new()));
     let notifydb = Arc::new(Mutex::new(NotifyDb::new()));
-
-    let args = Args::parse();
-    if args.public {
+    
+    if args.print_public {
         let public = serverdb.myself.get_public_key();
         println!("{}", BASE64_STANDARD.encode(public.as_bytes()));
+        return Ok(());
+    }
+    else if args.print_private {
+        let private = serverdb.myself.get_private_key();
+        println!("{}", BASE64_STANDARD.encode(private.as_bytes()));
         return Ok(());
     }
 

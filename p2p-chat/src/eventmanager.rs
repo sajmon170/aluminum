@@ -1,7 +1,5 @@
-use libchatty::{
-    messaging::UserMessage,
-    system::FileMetadata
-};
+use libchatty::messaging::UserMessage;
+
 use tokio::{
     sync::mpsc,
     time::{self, Duration},
@@ -29,7 +27,6 @@ impl From<PressedKey> for KeyEvent {
 #[derive(Debug)]
 pub enum AppEvent {
     ReceiveMessage(UserMessage),
-    ReceiveInvite(FileMetadata),
     NotifyDownloaded,
     SetOffline,
     SetConnecting,
@@ -58,7 +55,6 @@ impl EventManager {
                 Some(msg) = self.msg_rx.recv() => {
                     let event = match msg {
                         ConnMessage::UserMessage(msg) => AppEvent::ReceiveMessage(msg),
-                        ConnMessage::FileInvite(invite) => AppEvent::ReceiveInvite(invite),
                         ConnMessage::DownloadedFile => AppEvent::NotifyDownloaded,
                         ConnMessage::ServerOffline => AppEvent::SetOffline,
                         ConnMessage::Connecting => AppEvent::SetConnecting,

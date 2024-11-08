@@ -1,31 +1,35 @@
 use std::{
-    io::{self, Stdout}, path::PathBuf, sync::{Arc, Mutex}
+    io::{self, Stdout},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use ed25519_dalek::VerifyingKey;
-use tokio::{sync::mpsc, fs::File};
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use ratatui::{backend::CrosstermBackend, Terminal};
+use tokio::{fs::File, sync::mpsc};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use image::{DynamicImage, ImageError, ImageReader};
+use ratatui_image::picker::Picker;
 
 use crate::{
+    action::AppAction,
     connmanager::ConnManagerHandle,
-    peermanager::PeerCommand,
     eventmanager::{AppEvent, EventManagerHandle},
-    messageview::MessageViewAction,
     messagerepl::{Cli, Command, Parser},
+    messageview::MessageViewAction,
+    peermanager::PeerCommand,
     tui::{Tui, TuiAction},
-    action::AppAction
 };
 
 use libchatty::{
     identity::{Myself, Relay, UserDb},
     messaging::{PeerMessageData, UserMessage},
-    system::FileMetadata
+    system::{FileHandle, FileMetadata},
 };
 
-use tracing::{event, Level};
-
 use color_eyre::Result;
+use tracing::{event, Level};
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
@@ -37,6 +41,7 @@ pub struct AppController<'a> {
     tracker: TaskTracker,
     token: CancellationToken,
     db: Arc<Mutex<UserDb>>,
+    pending_download: Option<FileMetadata>,
 }
 
 impl<'a> AppController<'a> {
@@ -48,7 +53,10 @@ impl<'a> AppController<'a> {
         db: Arc<Mutex<UserDb>>,
         relay: Relay,
     ) -> Self {
-        let tui = Tui::new(db.clone());
+        let mut picker = Picker::from_termios().unwrap();
+        picker.guess_protocol();
+        let tui = Tui::new(db.clone(), picker);
+
         let (message_tx, message_rx) = mpsc::channel(32);
         let event_manager =
             EventManagerHandle::new(message_rx, &tracker, token.clone());
@@ -65,6 +73,7 @@ impl<'a> AppController<'a> {
             relay,
             &tracker,
             token.clone(),
+            db.clone(),
         );
 
         Self {
@@ -75,6 +84,7 @@ impl<'a> AppController<'a> {
             tracker,
             token,
             db,
+            pending_download: None,
         }
     }
 
@@ -86,9 +96,9 @@ impl<'a> AppController<'a> {
                         while let Some(next_action) = self.execute(action).await? {
                             action = next_action;
                         }
-                        
+
                     }
-                    
+
                 },
                 _ = self.token.cancelled() => { break; },
                 else => { self.token.cancel() }
@@ -104,28 +114,38 @@ impl<'a> AppController<'a> {
         match event {
             AppEvent::FrameTick => Some(AppAction::Redraw),
             AppEvent::KeyPress(key) => self.tui.handle_kbd_event(key),
-            AppEvent::ReceiveMessage(msg) => Some(AppAction::ReceiveMessage(msg)),
-            AppEvent::ReceiveInvite(invite) => Some(AppAction::ReceiveInvite(invite)),
-            AppEvent::NotifyDownloaded => Some(AppAction::ShowDownloadNotification),
+            AppEvent::ReceiveMessage(msg) => {
+                Some(AppAction::ReceiveMessage(msg))
+            }
+            AppEvent::NotifyDownloaded => {
+                Some(AppAction::ReceiveDownloadedFile)
+            }
             AppEvent::SetConnected => Some(AppAction::SetConnected),
             AppEvent::SetConnecting => Some(AppAction::SetConnecting),
-            AppEvent::SetOffline => Some(AppAction::SetOffline)
+            AppEvent::SetOffline => Some(AppAction::SetOffline),
         }
     }
 
-    fn receive_message(&mut self, msg: UserMessage) {
+    fn receive_message(&mut self, msg: UserMessage) -> Option<AppAction> {
         self.tui.add_user_message(msg.author, &msg);
-        self.add_user_message(msg.author, msg);
+        self.add_user_message(msg.author, msg.clone());
+
+        match msg.content {
+            PeerMessageData::FileMeta(meta) => self.receive_invite(meta),
+            _ => None,
+        }
     }
 
     fn receive_invite(&mut self, invite: FileMetadata) -> Option<AppAction> {
-        if let Some(t) = &invite.filetype {
+        self.pending_download = Some(invite);
+
+        if let Some(t) = &self.pending_download.as_ref().unwrap().filetype {
             if t.type_() == mime::IMAGE {
-                return Some(AppAction::DownloadFile)
+                return Some(AppAction::DownloadFile);
             }
         }
 
-        Some(AppAction::ShowInvite(invite))
+        None
     }
 
     fn add_user_message(&mut self, user_log: VerifyingKey, msg: UserMessage) {
@@ -135,21 +155,29 @@ impl<'a> AppController<'a> {
     }
 
     async fn parse_cmd(&mut self, cmd: &str) -> Result<Option<AppAction>> {
-        let args = shlex::split(cmd).ok_or(eyre::Report::msg("error: Invalid quoting"))?;
+        let args = shlex::split(cmd)
+            .ok_or(eyre::Report::msg("error: Invalid quoting"))?;
         let cli = Cli::try_parse_from(args).map_err(eyre::Report::msg)?;
 
         let action = match cli.command {
             Command::Share { path } => AppAction::ShareFile(path),
-            Command::Accept => AppAction::DownloadFile
+            Command::Accept => AppAction::DownloadFile,
         };
-        
+
         Ok(Some(action))
     }
 
     async fn share_file(&mut self, path: PathBuf) -> Result<()> {
+        let handle = FileHandle::new(path).await?;
+        {
+            let mut db = self.db.lock().unwrap();
+            db.add_file(handle.clone());
+        }
         let to = self.tui.get_current_user();
-        self.conn_manager.send(to, PeerCommand::ShareFile(path)).await;
-        Ok(())
+        let msg = PeerMessageData::FileMeta(handle.get_metadata().clone());
+
+        self.parse_file(handle.get_metadata().clone(), handle.get_path().to_owned()).await?;
+        self.send_message(msg, to).await
     }
 
     async fn get_file(&mut self) -> Result<()> {
@@ -177,7 +205,31 @@ impl<'a> AppController<'a> {
         Ok(())
     }
 
-    async fn execute(&mut self, action: AppAction) -> Result<Option<AppAction>> {
+    async fn parse_file(&mut self, meta: FileMetadata, path: PathBuf) -> Result<()> {
+        if let Some(mime) = &meta.filetype {
+            if mime.type_() == mime::IMAGE {
+                let image = tokio::task::spawn_blocking(
+                    move || -> Result<DynamicImage, ImageError> {
+                        event!(Level::DEBUG, "Trying to open: {}", path.display());
+                        ImageReader::open(&path)?.decode()
+                    },
+                )
+                .await?
+                .unwrap();
+
+                event!(Level::DEBUG, "Decoded an image!");
+
+                self.tui.add_image(meta.hash, image);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn execute(
+        &mut self,
+        action: AppAction,
+    ) -> Result<Option<AppAction>> {
         let result = match action {
             AppAction::Quit => {
                 self.token.cancel();
@@ -188,29 +240,16 @@ impl<'a> AppController<'a> {
                 self.tui.draw(self.terminal)?;
                 None
             }
-            AppAction::TuiAction(action) => {
-                self.tui.react(action)?
-            }
+            AppAction::TuiAction(action) => self.tui.react(action)?,
             AppAction::SelectUser(user) => {
                 self.tui.select_user(user);
                 None
             }
-            AppAction::ReceiveMessage(msg) => {
-                self.receive_message(msg);
-                None
-            }
-            AppAction::ReceiveInvite(invite) => {
-                self.receive_invite(invite)
-            }
-            AppAction::ShowDownloadNotification => {
-                self.tui.show_download_notification();
-                None
-            }
+            AppAction::ReceiveMessage(msg) => self.receive_message(msg),
             AppAction::ParseCommand(cmd) => {
                 if cmd.chars().nth(0).unwrap() != '/' {
                     Some(AppAction::SendTextMessage(cmd))
-                }
-                else {
+                } else {
                     self.parse_cmd(&cmd[1..]).await?
                 }
             }
@@ -231,6 +270,12 @@ impl<'a> AppController<'a> {
                 self.get_file().await?;
                 None
             }
+            AppAction::ReceiveDownloadedFile => {
+                let meta = self.pending_download.as_ref().unwrap();
+                self.parse_file(meta.clone(), meta.get_save_path()).await?;
+
+                None
+            }
             AppAction::SetConnected => {
                 self.tui.set_connected();
                 None
@@ -241,10 +286,6 @@ impl<'a> AppController<'a> {
             }
             AppAction::SetOffline => {
                 self.tui.set_offline();
-                None
-            }
-            AppAction::ShowInvite(invite) => {
-                self.tui.show_invite(invite);
                 None
             }
         };

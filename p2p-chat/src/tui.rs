@@ -3,14 +3,14 @@ use crate::{
     action::AppAction,
     eventmanager::PressedKey,
     friendsview::{DisplayUser, FriendsView, FriendsViewAction},
-    message::{DisplayMessage, MessageStyle},
+    message::{DisplayMessage, DisplayMessageMetadata, Content, MessageStyle, MessageSide, TextStyle},
     messageview::{MessageView, MessageViewAction},
 };
 
 use libchatty::{
     identity::UserDb,
     messaging::{PeerMessageData, UserMessage},
-    system::FileMetadata
+    system::Hash
 };
 
 use std::{
@@ -26,6 +26,9 @@ type Term = Terminal<CrosstermBackend<Stdout>>;
 use ratatui::{backend::CrosstermBackend, prelude::*, widgets::Tabs, Terminal};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
+use image::DynamicImage;
+use ratatui_image::picker::Picker;
+
 use chrono::Utc;
 
 use strum::{EnumCount, IntoEnumIterator};
@@ -40,7 +43,7 @@ pub struct Tui<'a> {
     selected_tab: SelectedTab,
     friends_view: FriendsView,
     db: Arc<Mutex<UserDb>>,
-    conn_status: ConnectionStatus
+    conn_status: ConnectionStatus,
 }
 
 #[derive(Copy, Clone, Display, EnumIter, FromRepr, EnumCountMacro)]
@@ -74,7 +77,7 @@ impl SelectedTab {
 }
 
 impl<'a> Tui<'a> {
-    pub fn new(db: Arc<Mutex<UserDb>>) -> Self {
+    pub fn new(db: Arc<Mutex<UserDb>>, picker: Picker) -> Self {
         let friends: Vec<DisplayUser> = {
             let db = db.lock().unwrap();
             db.remote
@@ -88,11 +91,11 @@ impl<'a> Tui<'a> {
         };
 
         Self {
-            message_view: MessageView::new(Vec::new()),
+            message_view: MessageView::new(Vec::new(), picker),
             friends_view: FriendsView::new(friends),
             selected_tab: SelectedTab::Friends,
             db,
-            conn_status: ConnectionStatus::Connecting
+            conn_status: ConnectionStatus::Connecting,
         }
     }
 
@@ -262,18 +265,40 @@ impl<'a> Tui<'a> {
                         .clone()
                 };
 
-                let text = match &msg.content {
-                    PeerMessageData::Text(text) => text,
+                let side = if msg.author == to {
+                    MessageSide::Responder
+                }
+                else {
+                    MessageSide::Sender
                 };
 
-                let style = if msg.author == to { MessageStyle::Responder }
-                else { MessageStyle::Sender };
-
-                let message = DisplayMessage {
-                    content: text.clone(),
-                    author: user_meta.nickname,
-                    timestamp: msg.timestamp,
-                    style
+                let message = match &msg.content { 
+                    PeerMessageData::Text(text) => {
+                        DisplayMessage {
+                            content: Content::Text(text.clone()),
+                            meta: DisplayMessageMetadata {
+                                author: user_meta.nickname,
+                                timestamp: msg.timestamp,
+                                style: MessageStyle {
+                                    side,
+                                    text: TextStyle::Normal
+                                }
+                            }
+                        }
+                    },
+                    PeerMessageData::FileMeta(meta) => {
+                        DisplayMessage {
+                            content: Content::File(meta.clone()),
+                            meta: DisplayMessageMetadata {
+                                author: user_meta.nickname,
+                                timestamp: msg.timestamp,
+                                style: MessageStyle {
+                                    side,
+                                    text: TextStyle::Info
+                                }
+                            }
+                        }
+                    }
                 };
 
                 self.message_view.append(message);
@@ -281,27 +306,8 @@ impl<'a> Tui<'a> {
         }
     }
 
-    pub fn add_info_message(&mut self, msg: String) {
-        let message = DisplayMessage {
-            content: msg,
-            author: String::from("Info"),
-            timestamp: Utc::now(),
-            style: MessageStyle::Info
-        };
-
-        self.message_view.append(message);
-    }
-
-    pub fn show_invite(&mut self, invite: FileMetadata) {
-        self.add_info_message(
-            format!("User wants to share a file: {} ({})",
-                    invite.name,
-                    format_size(invite.size, DECIMAL))
-        );
-    }
-
-    pub fn show_download_notification(&mut self) {
-        self.add_info_message(String::from("Received a file."));
+    pub fn add_image(&mut self, hash: Hash, image: DynamicImage) {
+        self.message_view.add_image(hash, image);
     }
 }
 

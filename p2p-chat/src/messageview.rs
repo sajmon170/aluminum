@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use crate::{
     component::Component,
     action,
     eventmanager::PressedKey,
-    message::DisplayMessage
+    message::{DisplayMessage, DisplayMessageWidget, Autowidget}
 };
+
+use libchatty::system::Hash;
 
 use layout::Size;
 use ratatui::{
@@ -17,14 +21,18 @@ use tui_scrollview::*;
 
 use color_eyre::Result;
 
-#[derive(Debug)]
+use image::DynamicImage;
+use ratatui_image::{picker::Picker, protocol::Protocol, Resize};
+
 pub struct MessageView<'a> {
     textarea: TextArea<'a>,
     messages: Vec<DisplayMessage>,
     scroll_state: ScrollViewState,
     // This flag means that the ScrollView needs to be initialized with data
     // before applying a PageUp/PageDown scroll.
-    init_scroll: bool
+    init_scroll: bool,
+    images: HashMap<Hash, Box<dyn Protocol>>,
+    picker: Picker
 }
 
 impl<'a> Widget for &mut MessageView<'a> {
@@ -36,20 +44,20 @@ impl<'a> Widget for &mut MessageView<'a> {
 
         let width = message_log.width - 1;
 
-        let paragraphs: Vec<(Paragraph, u16)> = self.messages.iter()
-            .map(|msg| MessageView::make_paragraph(msg, width))
+        let widgets: Vec<DisplayMessageWidget> = self.messages.iter()
+            .map(|msg| msg.make_widget(width, &self.images))
             .collect();
 
-        let total_height = paragraphs.iter()
-            .fold(0, |sum, (_, height)| sum + height);
+        let total_height = widgets.iter()
+            .fold(0, |sum, widget| sum + widget.get_height());
 
         let mut scroll_view = ScrollView::new(Size::new(width, total_height));
 
         let mut starting_height = 0;
-        for (paragraph, widget_height) in &paragraphs {
-            let area = Rect::new(0, starting_height, width, *widget_height);
-            scroll_view.render_widget(paragraph, area);
-            starting_height += widget_height;
+        for widget in &widgets {
+            let area = Rect::new(0, starting_height, width, widget.get_height());
+            starting_height += widget.get_height();
+            scroll_view.render_widget(widget, area);
         }
 
         if total_height < message_log.height {
@@ -72,11 +80,8 @@ impl<'a> Widget for &mut MessageView<'a> {
     }
 }
 
-
-// TODO:
-// - load messages in a better way
 impl<'a> MessageView<'a> {
-    pub fn new(messages: Vec<DisplayMessage>) -> Self {
+    pub fn new(messages: Vec<DisplayMessage>, picker: Picker) -> Self {
         let mut textarea = TextArea::default();
         textarea.set_block(Block::bordered());
         textarea.set_cursor_line_style(Style::default());
@@ -85,54 +90,10 @@ impl<'a> MessageView<'a> {
             textarea,
             messages,
             scroll_state: ScrollViewState::new(),
-            init_scroll: true
+            init_scroll: true,
+            images: HashMap::new(),
+            picker
         }
-    }
-
-    fn make_paragraph(msg: &DisplayMessage, width: u16) -> (Paragraph, u16) {
-        let name_spans = vec![
-            Span::styled(msg.get_time(), Style::default().fg(Color::DarkGray)),
-            Span::from(" "),
-            Span::styled(
-                &msg.author,
-                msg.get_style().fg(msg.get_user_color()),
-            ),
-            Span::styled(
-                ">",
-                Style::default().fg(msg.get_text_color())         
-            ),
-        ];
-
-        let name_str = name_spans
-            .iter()
-            .fold(String::new(), |total, span| total + span.content.as_ref());
-
-        let msg_str = format!("{} {}", name_str, msg.content);
-
-        let wrapped: Vec<String> = textwrap::wrap(&msg_str, width as usize)
-            .into_iter()
-            .map(|x| x.to_string())
-            .collect();
-
-        let height = wrapped.len() as u16;
-
-        let mut wrapped = wrapped.into_iter();
-
-        let first_line = wrapped.next().unwrap()[name_str.len()..].to_owned();
-
-        let lines = std::iter::once(Line::from_iter(
-            name_spans.into_iter().chain(std::iter::once(Span::raw(
-                first_line
-            ))),
-        ))
-        .chain(wrapped.map(|x| Line::from(x)));
-
-        let paragraph = Paragraph::new(
-            Text::from_iter(lines)
-                .style(Style::default().fg(msg.get_text_color()))
-        );
-
-        (paragraph, height)
     }
 
     pub fn append(&mut self, msg: DisplayMessage) {
@@ -170,21 +131,20 @@ impl<'a> MessageView<'a> {
     pub fn clear(&mut self) {
         self.messages.clear();
     }
+
+    pub fn add_image(&mut self, hash: Hash, image: DynamicImage) {
+        let proto = self.picker.new_protocol(image, Rect::new(0, 0, 36, 12), Resize::Fit(None));
+        if let Ok(result) = proto {
+            self.images.insert(hash, result);
+        }
+        
+    }
 }
-
-// TODO: replace SendMsg with TextInput
-// TODO: Return multiple AppActions from TextInput
-// -> SendTextMessage
-// -> SendImage
-
-// TODO - implement multiple AppActions that can stem from TextInput
-// but all of them will send data in a unified way to the EventManager
 
 #[derive(Debug)]
 pub enum MessageViewAction {
     ScrollUp,
     ScrollDown,
-    //ReceiveMsg(String),
     TextInput(String),
     WriteKey(PressedKey),
 }

@@ -1,6 +1,6 @@
 use libchatty::{
     messaging::{PeerMessageData, RelayRequest, RelayResponse, UserMessage},
-    identity::{Myself, Relay},
+    identity::{Myself, Relay, UserDb},
     noise_session::*,
     quinn_session::*,
     noise_transport::*,
@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     error::Error,
     net::SocketAddr, time::Duration,
+    sync::{Arc, Mutex}
 };
 
 use crate::peermanager::{P2pRole, PeerCommand, PeerManagerHandle};
@@ -40,11 +41,12 @@ struct ConnManager {
     token: CancellationToken,
     tracker: TaskTracker,
     connections: HashMap<VerifyingKey, PeerManagerHandle>,
+    db: Arc<Mutex<UserDb>>
 }
 
 pub enum ConnMessage {
     UserMessage(UserMessage),
-    FileInvite(FileMetadata),
+    // TODO - change this to DownloadedFile(Hash)
     DownloadedFile,
     ServerOffline,
     Connecting,
@@ -159,6 +161,7 @@ impl ConnManager {
             role,
             self.tracker.clone(),
             self.tx.clone(),
+            self.db.clone()
         );
         self.connections.insert(pubkey, handle);
     }
@@ -202,6 +205,7 @@ impl ConnManagerHandle {
         relay: Relay,
         tracker: &TaskTracker,
         token: CancellationToken,
+        db: Arc<Mutex<UserDb>>
     ) -> Self {
         let (command_tx, command_rx) = mpsc::channel(32);
 
@@ -215,6 +219,7 @@ impl ConnManagerHandle {
                 token: token.clone(),
                 tracker: inner_tracker,
                 connections: HashMap::new(),
+                db
             };
 
             // Warning! ConnManager keeps its state after a crash!

@@ -1,13 +1,19 @@
 use libchatty::{
-    identity::Myself,
+    identity::{Myself, UserDb},
     messaging::{PeerMessageData, PeerPacket, UserMessage},
     noise_session::*,
     noise_transport::*,
-    system::{self, FileHandle, FileMetadata},
+    system::{self, FileHandle, FileMetadata, Hash},
     utils,
 };
 
-use std::{error::Error, net::SocketAddr, path::PathBuf, time::Duration};
+use std::{
+    error::Error,
+    net::SocketAddr,
+    path::PathBuf,
+    time::Duration,
+    sync::{Arc, Mutex}
+};
 
 use ed25519_dalek::VerifyingKey;
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -46,6 +52,7 @@ struct PeerManager {
     // TODO - replace this with a database of invites
     sent_invite: Option<FileHandle>,
     recv_invite: Option<FileMetadata>,
+    db: Arc<Mutex<UserDb>>
 }
 
 impl PeerManager {
@@ -75,7 +82,6 @@ impl PeerManager {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         match command {
             PeerCommand::Send(msg) => self.send_message(msg).await?,
-            PeerCommand::ShareFile(file) => self.send_file_invite(file).await?,
             PeerCommand::GetFile => self.download_file().await?,
         }
 
@@ -88,8 +94,7 @@ impl PeerManager {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         match packet {
             PeerPacket::Send(msg) => self.receive_message(msg).await?,
-            PeerPacket::Share(file) => self.receive_file_invite(file).await?,
-            PeerPacket::GimmeFile => self.upload_file().await?,
+            PeerPacket::GetFile(hash) => self.upload_file(hash).await?,
             _ => (),
         }
 
@@ -113,10 +118,7 @@ impl PeerManager {
         &mut self,
         msg: PeerMessageData,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let text = match &msg {
-            PeerMessageData::Text(text) => text.clone(),
-        };
-        event!(Level::INFO, "Sending message: {text}");
+        event!(Level::INFO, "Sending message: {:?}", msg);
         self.send_packet(PeerPacket::Send(msg)).await?;
 
         Ok(())
@@ -126,11 +128,11 @@ impl PeerManager {
         &mut self,
         msg: PeerMessageData,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let text = match &msg {
-            PeerMessageData::Text(text) => text.clone(),
-        };
+        event!(Level::INFO, "Received message: {:?}", msg);
 
-        event!(Level::INFO, "Received message: {text}");
+        if let PeerMessageData::FileMeta(meta) = &msg {
+            self.recv_invite = Some(meta.clone())
+        }
 
         self.tx
             .send(ConnMessage::UserMessage(UserMessage::new(
@@ -142,34 +144,23 @@ impl PeerManager {
         Ok(())
     }
 
-    async fn send_file_invite(
-        &mut self,
-        path: PathBuf,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.sent_invite = Some(FileHandle::new(path).await?);
-        let meta = self.sent_invite.as_ref().unwrap().get_metadata();
-        self.send_packet(PeerPacket::Share(meta.clone())).await?;
-
-        Ok(())
-    }
-
-    async fn receive_file_invite(
-        &mut self,
-        file: FileMetadata,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.recv_invite = Some(file.clone());
-
-        self.tx.send(ConnMessage::FileInvite(file)).await?;
-
-        Ok(())
-    }
-
+    // TODO: Add an error type
     async fn upload_file(
         &mut self,
+        hash: Hash
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let path = self.sent_invite.as_ref().unwrap().get_path();
+        let handle = {
+            let db = self.db.lock().unwrap();
+            match db.get_file(&hash) {
+                None => {
+                    event!(Level::INFO, "Couldn't upload file - file not found");
+                    return Ok(());
+                }
+                Some(handle) => handle.clone()
+            }
+        };
 
-        let mut file = File::open(path).await?;
+        let mut file = handle.open().await?;
         let mut socket = self.conn.as_mut().unwrap().get_mut();
 
         event!(Level::INFO, "Beginning file upload");
@@ -177,13 +168,8 @@ impl PeerManager {
         event!(Level::INFO, "Finished uploading");
 
         Ok(())
+        
     }
-
-    // TODO:
-    // - pass the destination directory as an argument to the download() method
-    // - separate downloading images from files
-
-    // or: just download everything into Downloads
 
     async fn download_file(
         &mut self,
@@ -194,7 +180,7 @@ impl PeerManager {
             .ok_or("Can't download without a matching invite.")?
             .clone();
 
-        let save_path = system::get_downloads_dir().join(&invite.name);
+        let save_path = invite.get_save_path();
 
         event!(Level::DEBUG, "Preparing for download, saving file @ {:?}", save_path);
         
@@ -202,16 +188,22 @@ impl PeerManager {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(save_path)
+            .open(&save_path)
             .await?;
 
-        self.send_packet(PeerPacket::GimmeFile).await?;
+        self.send_packet(PeerPacket::GetFile(invite.hash)).await?;
 
+        // TODO - handle the case when the peer doesn't have the requested file
         let mut socket =
             self.conn.as_mut().unwrap().get_mut().take(invite.size);
 
         event!(Level::INFO, "Beginning file download");
         tokio::io::copy(&mut socket, &mut file).await?;
+
+        if utils::get_hash_from_path(&save_path).await? != invite.hash {
+            // TODO - handle file hash not matching
+        }
+        
         event!(Level::INFO, "Finished downloading");
 
         self.tx.send(ConnMessage::DownloadedFile).await?;
@@ -295,7 +287,6 @@ impl PeerManager {
 
 pub enum PeerCommand {
     Send(PeerMessageData),
-    ShareFile(PathBuf),
     GetFile,
 }
 
@@ -315,6 +306,7 @@ impl PeerManagerHandle {
         role: P2pRole,
         tracker: TaskTracker,
         message_consumer: mpsc::Sender<ConnMessage>,
+        db: Arc<Mutex<UserDb>>
     ) -> Self {
         let (tx, rx) = mpsc::channel(32);
 
@@ -331,7 +323,8 @@ impl PeerManagerHandle {
                 tx: message_consumer,
                 conn: None,
                 sent_invite: None,
-                recv_invite: None
+                recv_invite: None,
+                db
             };
 
             loop {

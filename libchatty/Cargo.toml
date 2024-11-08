@@ -32,3 +32,6 @@ strum_macros = "0.26.4"
 pin-project = "1.1.7"
 infer = "0.16.0"
 mime = "0.3.17"
+tokio-stream = "0.1.16"
+blake3 = { version = "1.5.4", features = ["serde"] }
+image = "0.25.5"

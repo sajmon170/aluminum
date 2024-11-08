@@ -1,4 +1,4 @@
-use crate::messaging::UserMessage;
+use crate::{messaging::UserMessage, system::{FileHandle, Hash}};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -147,6 +147,7 @@ pub struct UserDb {
     pub myself: Myself, // TODO: Make this a list of multiple identities
     pub remote: HashMap<VerifyingKey, UserMetadata>,
     pub messages: HashMap<VerifyingKey, Vec<UserMessage>>,
+    pub files: HashMap<Hash, FileHandle>
 }
 
 // TODO: Make this safe - implement error handling!
@@ -159,11 +160,16 @@ impl UserDb {
             myself,
             remote: HashMap::new(),
             messages: HashMap::new(),
+            files: HashMap::new()
         }
     }
 
     pub fn add_user(&mut self, user: User) {
         self.remote.insert(user.public_key, user.metadata);
+    }
+
+    pub fn add_file(&mut self, file: FileHandle) {
+        self.files.insert(file.get_metadata().hash, file);
     }
 
     pub fn save(&self) {
@@ -182,6 +188,10 @@ impl UserDb {
 
     pub fn get_master_key(&self) -> &SigningKey {
         &self.myself.private_key
+    }
+
+    pub fn get_file(&self, hash: &Hash) -> Option<&FileHandle> {
+        self.files.get(hash)
     }
 
     pub fn find_user_by_name(&self, nickname: &str) -> Option<&VerifyingKey> {

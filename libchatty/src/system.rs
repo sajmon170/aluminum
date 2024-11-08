@@ -7,7 +7,7 @@ use std::{
 
 use tokio::fs::File;
 use serde::{Serialize, Deserialize};
-use crate::mime::Mime;
+use crate::{mime::Mime, utils};
 
 pub fn get_user_dir() -> PathBuf {
     dirs::data_dir()
@@ -34,7 +34,21 @@ pub fn get_downloads_dir() -> PathBuf {
 pub struct FileMetadata {
     pub name: String,
     pub size: u64,
+    pub hash: blake3::Hash,
     pub filetype: Option<Mime>
+}
+
+impl FileMetadata {
+    pub fn get_save_path(&self) -> PathBuf {
+        get_downloads_dir().join(&self.name)
+    }
+
+    pub fn get_local_handle(&self) -> FileHandle {
+        FileHandle {
+            path: self.get_save_path(),
+            metadata: self.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,9 +65,12 @@ impl FileHandle {
             .into_string()
             .unwrap();
 
-        let size =  {
-            let file = File::open(&path).await?;
-            file.metadata().await?.len()
+        let (size, hash) =  {
+            let mut file = File::open(&path).await?;
+            let size = file.metadata().await?.len();
+            let hash = utils::get_hash_from_file(&mut file).await?;
+
+            (size, hash)
         };
         
         let cloned_path = path.clone();
@@ -68,7 +85,7 @@ impl FileHandle {
         Ok(
             FileHandle {
                 path,
-                metadata: FileMetadata { name, size, filetype }
+                metadata: FileMetadata { name, size, filetype, hash }
             }
         )
     }
@@ -85,3 +102,5 @@ impl FileHandle {
         &self.path.as_ref()
     }
 }
+
+pub type Hash = blake3::Hash;

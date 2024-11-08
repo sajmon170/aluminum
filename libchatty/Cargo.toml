@@ -35,3 +35,4 @@ mime = "0.3.17"
 tokio-stream = "0.1.16"
 blake3 = { version = "1.5.4", features = ["serde"] }
 image = "0.25.5"
+dissonance = "0.3.0"

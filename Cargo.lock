@@ -1025,6 +1025,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "dissonance"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac6895ed5b2e486f410e97f781c19829f76cea6c269979907ce4e78f3d883927"
+dependencies = [
+ "bytes 1.8.0",
+ "futures 0.3.31",
+ "pin-project",
+ "postcard",
+ "serde",
+ "snow",
+ "strum_macros",
+ "tokio 1.41.1",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1840,6 +1858,7 @@ dependencies = [
  "chrono",
  "curve25519-dalek",
  "dirs",
+ "dissonance",
  "ed25519-dalek",
  "enum-as-inner",
  "futures 0.3.31",

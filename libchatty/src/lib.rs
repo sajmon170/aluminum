@@ -1,11 +1,12 @@
 mod base64_codec;
 pub mod identity;
 pub mod messaging;
-mod noise_codec;
-pub mod noise_session;
-pub mod quinn_session;
 pub mod utils;
 pub mod system;
-pub mod asymmetric_codec;
-pub mod noise_transport;
 pub mod mime;
+pub mod quinn_session;
+
+pub use dissonance::noise_codec;
+pub use dissonance::noise_session;
+pub use dissonance::asymmetric_codec;
+pub use dissonance::noise_transport;
